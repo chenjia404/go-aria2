@@ -10,15 +10,17 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/chenjia404/go-aria2/internal/compat/aria2"
 	"github.com/chenjia404/go-aria2/internal/core/manager"
+	"github.com/chenjia404/go-aria2/internal/core/task"
 )
 
 const websocketGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 type snapshotMessage struct {
-	Type       string             `json:"type"`
-	Tasks      any                `json:"tasks"`
-	GlobalStat manager.GlobalStat `json:"globalStat"`
+	Type       string           `json:"type"`
+	Tasks      []map[string]any `json:"tasks"`
+	GlobalStat map[string]any   `json:"globalStat"`
 }
 
 type client struct {
@@ -92,18 +94,42 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	initial := snapshotMessage{
 		Type:       "snapshot",
-		Tasks:      s.manager.SnapshotTasks(),
-		GlobalStat: s.manager.GetGlobalStat(),
+		Tasks:      snapshotTasksAria2(s.manager.SnapshotTasks()),
+		GlobalStat: aria2.GlobalStatToAria2JSON(s.manager.GetGlobalStat()),
 	}
 	if err := wsClient.sendJSON(initial); err != nil {
 		return
 	}
 
 	for event := range events {
-		if err := wsClient.sendJSON(event); err != nil {
+		if err := wsClient.sendJSON(wsEventToJSON(event)); err != nil {
 			return
 		}
 	}
+}
+
+func snapshotTasksAria2(tasks []*task.Task) []map[string]any {
+	out := make([]map[string]any, 0, len(tasks))
+	for _, t := range tasks {
+		if t == nil {
+			continue
+		}
+		out = append(out, aria2.TaskToAria2StatusJSON(t))
+	}
+	return out
+}
+
+// wsEventToJSON 将内部事件转为与 JSON-RPC tellStatus / getGlobalStat 相同字段类型，便于 aria2 系前端解析。
+func wsEventToJSON(ev manager.Event) map[string]any {
+	m := map[string]any{
+		"type":       string(ev.Type),
+		"globalStat": aria2.GlobalStatToAria2JSON(ev.GlobalStat),
+		"time":       ev.Time,
+	}
+	if ev.Task != nil {
+		m["task"] = aria2.TaskToAria2StatusJSON(ev.Task)
+	}
+	return m
 }
 
 func (c *client) sendJSON(value any) error {

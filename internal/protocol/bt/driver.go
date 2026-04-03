@@ -428,7 +428,21 @@ func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, 
 	readBytes := stats.ConnStats.BytesReadUsefulData.Int64()
 	writeBytes := stats.ConnStats.BytesWrittenData.Int64()
 	now := time.Now()
-	if !state.lastSampleAt.IsZero() {
+
+	// 优先使用各 Peer 的瞬时速率之和（与 getPeers 一致），避免首次采样前 tellStatus 速度恒为 0。
+	var peerDown, peerUp int64
+	for _, pc := range state.torrent.PeerConns() {
+		if pc == nil {
+			continue
+		}
+		ps := pc.Stats()
+		peerDown += int64(ps.DownloadRate)
+		peerUp += int64(ps.LastWriteUploadRate)
+	}
+	if peerDown > 0 || peerUp > 0 {
+		item.DownloadSpeed = peerDown
+		item.UploadSpeed = peerUp
+	} else if !state.lastSampleAt.IsZero() {
 		elapsed := now.Sub(state.lastSampleAt).Seconds()
 		if elapsed > 0 {
 			item.DownloadSpeed = int64(float64(readBytes-state.lastReadBytes) / elapsed)

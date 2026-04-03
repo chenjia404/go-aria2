@@ -135,6 +135,19 @@ func toGlobalStatResponse(stat manager.GlobalStat) map[string]any {
 	}
 }
 
+// TaskToAria2StatusJSON 与 aria2.tellStatus 全量字段一致（数值均为字符串），供 WebSocket 等前端消费。
+func TaskToAria2StatusJSON(item *task.Task) map[string]any {
+	if item == nil {
+		return nil
+	}
+	return toStatusResponse(item, nil)
+}
+
+// GlobalStatToAria2JSON 与 aria2.getGlobalStat 字段一致。
+func GlobalStatToAria2JSON(stat manager.GlobalStat) map[string]any {
+	return toGlobalStatResponse(stat)
+}
+
 // toOptionResponse 将统一任务选项映射�?aria2 风格选项�?
 func toOptionResponse(item *task.Task) map[string]string {
 	options := cloneOptionMap(item.Options)
