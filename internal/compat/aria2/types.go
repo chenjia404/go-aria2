@@ -204,8 +204,9 @@ func toBitTorrentResponse(item *task.Task) map[string]any {
 		},
 	}
 
-	if trackers := splitMetaLines(item.Meta["bt.trackers"]); len(trackers) > 0 {
-		response["announceList"] = trackers
+	// aria2 约定 announceList 为「层级」列表：[][]string，JSON 形如 [["url1"],["url2"]]，不是扁平 []string。
+	if tiers := announceListFromMeta(item.Meta["bt.trackers"]); len(tiers) > 0 {
+		response["announceList"] = tiers
 	}
 	if comment := item.Meta["bt.comment"]; comment != "" {
 		response["comment"] = comment
@@ -224,4 +225,21 @@ func splitMetaLines(value string) []string {
 		return nil
 	}
 	return strings.Split(value, "\n")
+}
+
+// announceListFromMeta 将 meta 中按行存储的 tracker 转为 aria2 风格的 [][]string（每层一个 URL）。
+func announceListFromMeta(raw string) [][]string {
+	lines := splitMetaLines(raw)
+	if len(lines) == 0 {
+		return nil
+	}
+	out := make([][]string, 0, len(lines))
+	for _, line := range lines {
+		u := strings.TrimSpace(line)
+		if u == "" {
+			continue
+		}
+		out = append(out, []string{u})
+	}
+	return out
 }

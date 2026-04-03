@@ -141,6 +141,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 
 // Start 开始或恢复下载�?
 func (d *Driver) Start(ctx context.Context, taskID string) error {
+	_ = ctx
 	d.mu.Lock()
 	st := d.tasks[taskID]
 	if st == nil || st.removed {
@@ -152,7 +153,9 @@ func (d *Driver) Start(ctx context.Context, taskID string) error {
 		return nil
 	}
 
-	runCtx, cancel := context.WithCancel(ctx)
+	// 下载生命周期长于单次 JSON-RPC 请求。若使用 r.Context()，响应返回后 context 取消，
+	// download 会立刻退出，表现为 aria2.unpause / addUri 后立即停住。
+	runCtx, cancel := context.WithCancel(context.Background())
 	st.cancel = cancel
 	st.running = true
 	st.paused = false
