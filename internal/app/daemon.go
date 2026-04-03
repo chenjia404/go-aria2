@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -37,6 +38,7 @@ func runDaemon(args []string) error {
 	if err := applyDaemonCLIOptions(cfg, daemonOpts); err != nil {
 		return err
 	}
+	normalizeDaemonInputFile(cfg, &daemonOpts)
 	runtimePaths := resolveRuntimePaths(cfg)
 
 	logger, closer, err := newLogger(cfg)
@@ -146,7 +148,9 @@ func runDaemon(args []string) error {
 		logger.Fatalf("restore session failed: %v", err)
 	}
 	if err := bootstrapStartupJobs(ctx, mgr, cfg, daemonOpts, logger); err != nil {
-		logger.Fatalf("bootstrap startup jobs failed: %v", err)
+		// 某些 aria2 前端会传入非 aria2 input-file 格式的临时文件。
+		// 这里降级为 warning，避免守护进程因启动任务注入失败而整体退出。
+		logger.Printf("bootstrap startup jobs skipped: %v", err)
 	}
 
 	service := aria2.NewService(mgr, cfg.RPCSecret)
@@ -202,6 +206,24 @@ func runDaemon(args []string) error {
 		logger.Printf("save session on shutdown failed: %v", err)
 	}
 	return nil
+}
+
+func normalizeDaemonInputFile(cfg *config.Config, opts *daemonCLIOptions) {
+	if cfg == nil || opts == nil {
+		return
+	}
+	inputPath := strings.TrimSpace(opts.inputFile)
+	if inputPath == "" || inputPath == "-" {
+		return
+	}
+	if !strings.EqualFold(filepath.Ext(inputPath), ".json") {
+		return
+	}
+
+	// 前端若把 go-aria2 自己的 session.json 误传给 -i，
+	// 则把它视为 session 存储路径，而不是 aria2 input-file。
+	cfg.SaveSession = inputPath
+	opts.inputFile = ""
 }
 
 func loadConfig(path string) (*config.Config, error) {

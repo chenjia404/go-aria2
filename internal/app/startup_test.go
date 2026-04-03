@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/chenjia404/go-aria2/internal/config"
 )
 
 func TestCollectStartupJobsMergesCliDefaults(t *testing.T) {
@@ -56,5 +58,42 @@ func TestParseStartupInputFile(t *testing.T) {
 	}
 	if jobs[1].Options["gid"] != "0123456789abcdef" {
 		t.Fatalf("expected gid option on second job, got %#v", jobs[1].Options)
+	}
+}
+
+func TestNormalizeDaemonInputFileTreatsJSONAsSession(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	opts := daemonCLIOptions{
+		inputFile: "/tmp/session.json",
+	}
+
+	normalizeDaemonInputFile(cfg, &opts)
+
+	if cfg.SaveSession != "/tmp/session.json" {
+		t.Fatalf("expected json input file to become save-session, got %q", cfg.SaveSession)
+	}
+	if opts.inputFile != "" {
+		t.Fatalf("expected json input file to be cleared from startup jobs, got %q", opts.inputFile)
+	}
+}
+
+func TestNormalizeDaemonInputFileKeepsTextInputFile(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	originalSaveSession := cfg.SaveSession
+	opts := daemonCLIOptions{
+		inputFile: "/tmp/input.txt",
+	}
+
+	normalizeDaemonInputFile(cfg, &opts)
+
+	if cfg.SaveSession != originalSaveSession {
+		t.Fatalf("expected save-session unchanged, got %q", cfg.SaveSession)
+	}
+	if opts.inputFile != "/tmp/input.txt" {
+		t.Fatalf("expected text input file kept, got %q", opts.inputFile)
 	}
 }

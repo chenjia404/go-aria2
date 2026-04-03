@@ -44,6 +44,18 @@ aria2 save-session -> 导入 -> go-aria2 data/session.json
 
 迁移完成后，后续运行 `go-aria2` 时使用的是它自己的 `session.json`，不再继续写回 aria2 的 `save-session` 文本格式。
 
+这里不要混用：
+
+- aria2 的 `save-session`：给 `migrate-from-aria2 --session ...` 使用
+- go-aria2 的 `session.json`：给守护进程自身恢复任务使用
+
+如果你启动守护进程时用了 `-i`：
+
+- `-i *.json` 会被当作 go-aria2 的 `session.json`
+- `-i *.txt` 会被当作 aria2 风格 `input-file`
+
+不要把 go-aria2 的 `session.json` 传给“aria2 文本任务列表”的处理逻辑。
+
 ### 3. 正式迁移前，必须先停掉旧 aria2
 
 不要让 `aria2` 和 `go-aria2` 同时写同一个下载目录和同一批临时文件，否则会出现这些问题：

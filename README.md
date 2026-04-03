@@ -64,6 +64,20 @@ go run ./cmd/go-aria2 https://example.com/file.torrent
 go run ./cmd/go-aria2 -i ./input.txt
 ```
 
+`-i/--input-file` 现在有两种行为：
+
+- `-i *.txt` 或其他非 `.json` 文件：按 aria2 风格 `input-file` 文本任务列表解析
+- `-i *.json`：按 go-aria2 自己的 `session.json` 处理，作为会话恢复文件加载
+
+例如：
+
+```bash
+go run ./cmd/go-aria2 -i ./input.txt
+go run ./cmd/go-aria2 -i ./data/session.json
+```
+
+不要把 go-aria2 的 `session.json` 当成 aria2 的文本 `input-file`。前者是内部 JSON 会话文件，后者是纯文本任务列表，格式不同。
+
 ### 2. 发起 JSON-RPC 请求
 
 使用调试 CLI 直接调用接口：
