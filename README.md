@@ -22,6 +22,17 @@ Current focus:
 - Supports BT progress reconstruction and reuse of existing files when migrating.
 - Supports periodic `save-session` writes so tasks resume after restart.
 
+## Advantages over aria2
+
+Compared to the classic `aria2` daemon, `go-aria2` aims to offer:
+
+- **BitTorrent v2** — modern v2 torrents (hybrid / v2-only) are supported alongside v1, whereas many aria2 deployments are effectively v1-oriented.
+- **ED2K (eDonkey2000)** — built-in ED2K support via a real driver layer; aria2 does not cover this protocol.
+- **No artificial thread cap** — concurrency is modeled around goroutines and the Go scheduler, not a fixed worker-thread pool size, so you are not boxed in by a hard thread limit in the same way as typical native download daemons.
+- **Active maintenance** — the project is under continuous development with regular dependency and feature updates, which helps for long-running deployments.
+
+These points complement (not replace) aria2’s strengths; see [Known limitations](#known-limitations) for gaps in parity.
+
 ## Layout
 
 ```text
