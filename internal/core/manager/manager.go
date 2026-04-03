@@ -507,7 +507,8 @@ func (m *Manager) LoadSession(ctx context.Context) error {
 	for _, item := range m.snapshotTasks() {
 		m.emit(EventTaskRestored, item)
 	}
-	return nil
+	// 恢复后按 max-concurrent 启动仍处于 waiting 的任务（否则 HTTP/BT 等会一直停在队列里）。
+	return m.fillSlots(ctx)
 }
 
 // SaveSession 将当前任务快照写回存储�?
