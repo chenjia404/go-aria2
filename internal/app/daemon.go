@@ -20,6 +20,7 @@ import (
 	"github.com/chenjia404/go-aria2/internal/protocol/bt"
 	"github.com/chenjia404/go-aria2/internal/protocol/ed2k"
 	"github.com/chenjia404/go-aria2/internal/protocol/httpdl"
+	"github.com/chenjia404/go-aria2/internal/rpc/httpapi"
 	rpcserver "github.com/chenjia404/go-aria2/internal/rpc/jsonrpc"
 	wserver "github.com/chenjia404/go-aria2/internal/rpc/ws"
 )
@@ -155,6 +156,20 @@ func runDaemon(args []string) error {
 
 	service := aria2.NewService(mgr, cfg.RPCSecret)
 	mux := http.NewServeMux()
+	daemonStarted := time.Now()
+	rpcListenAddr := listenAddr(cfg.RPCListenPort, cfg.RPCListenAll)
+	if cfg.ED2KEnable && ed2kDriver != nil {
+		gw := ed2k.NewHTTPGateway(ed2kDriver, cfg.Dir, rpcListenAddr, daemonStarted)
+		mux.Handle("/api/", httpapi.NewRouter(&httpapi.Server{
+			Log:                logger,
+			Gateway:            gw,
+			CFG:                cfg,
+			ED2KStatePath:      runtimePaths.ed2kStatePath,
+			RPCListenAddr:      rpcListenAddr,
+			RPCSecret:          cfg.RPCSecret,
+			ReadTimeoutSeconds: 60,
+		}))
+	}
 	mux.Handle("/jsonrpc", rpcserver.NewServer(service, rpcserver.Options{
 		MaxRequestSize: cfg.RPCMaxRequestSize,
 		AllowOriginAll: cfg.RPCAllowOriginAll,
@@ -168,7 +183,7 @@ func runDaemon(args []string) error {
 	})
 
 	server := &http.Server{
-		Addr:    listenAddr(cfg.RPCListenPort, cfg.RPCListenAll),
+		Addr:    rpcListenAddr,
 		Handler: mux,
 	}
 
@@ -184,6 +199,9 @@ func runDaemon(args []string) error {
 		go func() {
 			rpcURL := rpcEndpointURL(cfg.RPCListenPort, cfg.RPCListenAll)
 			logger.Printf("json-rpc listening on %s (POST: %s)", server.Addr, rpcURL)
+			if cfg.ED2KEnable && ed2kDriver != nil {
+				logger.Printf("ED2K REST API (goed2kd-compatible paths): http://%s/api/v1/system/health — transfers use {hash}, auth: rpc-secret (Bearer / X-Auth-Token)", server.Addr)
+			}
 			if !cfg.RPCListenAll {
 				logger.Printf("rpc 仅绑定本机回环；ERR_CONNECTION_REFUSED 常见于用局域网 IP/容器 IP 访问——请改用 127.0.0.1，或设置 rpc-listen-all=true 并放行防火墙")
 			}

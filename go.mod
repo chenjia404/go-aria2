@@ -5,6 +5,7 @@ go 1.25.7
 require (
 	github.com/RoaringBitmap/roaring v1.9.4
 	github.com/anacrolix/torrent v1.61.0
+	github.com/go-chi/chi/v5 v5.2.3
 	github.com/monkeyWie/goed2k v0.0.0-20260403055011-a8f73dee6faa
 )
 

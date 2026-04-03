@@ -62,6 +62,16 @@ func NewService(mgr *manager.Manager, rpcSecret string) *Service {
 	}
 }
 
+// VersionInfo 返回与 aria2.getVersion 一致的结构，供 REST 等适配层使用。
+func (s *Service) VersionInfo() map[string]any {
+	return s.getVersion()
+}
+
+// SessionInfo 返回与 aria2.getSessionInfo 一致的结构，供 REST 等适配层使用。
+func (s *Service) SessionInfo() map[string]any {
+	return s.getSessionInfo()
+}
+
 // Invoke ????? aria2 ???????????????? rpc-secret ????????
 func (s *Service) Invoke(ctx context.Context, method string, params []any) (any, error) {
 	authorizedParams, err := s.authorize(params)
