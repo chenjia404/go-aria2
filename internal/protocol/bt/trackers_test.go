@@ -4,7 +4,34 @@ import (
 	"testing"
 
 	torrentlib "github.com/anacrolix/torrent"
+
+	"github.com/chenjia404/go-aria2/internal/core/task"
 )
+
+func TestEffectiveOptsForSessionRestore_prefersLocalOverStaleMerged(t *testing.T) {
+	global := map[string]string{"bt-tracker": "udp://global/announce"}
+	saved := &task.Task{
+		Options: map[string]string{"bt-tracker": "udp://old-saved-merge/announce"},
+		LocalOptions: map[string]string{
+			"bt-tracker": "udp://per-task/announce",
+		},
+	}
+	eff := effectiveOptsForSessionRestore(saved, global)
+	if eff["bt-tracker"] != "udp://per-task/announce" {
+		t.Fatalf("task LocalOptions should override global: got %q", eff["bt-tracker"])
+	}
+}
+
+func TestEffectiveOptsForSessionRestore_legacyUsesOptions(t *testing.T) {
+	global := map[string]string{"bt-tracker": "udp://global/announce"}
+	saved := &task.Task{
+		Options: map[string]string{"bt-tracker": "udp://merged-at-save/announce"},
+	}
+	eff := effectiveOptsForSessionRestore(saved, global)
+	if eff["bt-tracker"] != "udp://merged-at-save/announce" {
+		t.Fatalf("legacy: use saved.Options: got %q", eff["bt-tracker"])
+	}
+}
 
 func TestApplyBTTrackerOpts_excludePrefix(t *testing.T) {
 	spec := &torrentlib.TorrentSpec{

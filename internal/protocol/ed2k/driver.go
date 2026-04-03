@@ -268,8 +268,9 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 }
 
 // LoadSessionTasks 将统一 session �?goed2k 的状态恢复能力重新对齐�?
-func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task) error {
+func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globalOptions map[string]string) error {
 	_ = ctx
+	_ = globalOptions
 	if d.statePath != "" {
 		if err := d.client.LoadState(""); err != nil {
 			return err

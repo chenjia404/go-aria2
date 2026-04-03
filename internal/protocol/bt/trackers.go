@@ -4,7 +4,34 @@ import (
 	"strings"
 
 	torrentlib "github.com/anacrolix/torrent"
+
+	"github.com/chenjia404/go-aria2/internal/core/task"
 )
+
+func mergeStringStringMaps(base, over map[string]string) map[string]string {
+	if len(base) == 0 && len(over) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(base)+len(over))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range over {
+		out[k] = v
+	}
+	return out
+}
+
+// effectiveOptsForSessionRestore 会话恢复：有 LocalOptions 时用「当前全局 + 任务级」合并；否则用落盘的 Options（旧会话兼容）。
+func effectiveOptsForSessionRestore(t *task.Task, global map[string]string) map[string]string {
+	if t == nil {
+		return nil
+	}
+	if t.LocalOptions != nil {
+		return mergeStringStringMaps(global, t.LocalOptions)
+	}
+	return t.Options
+}
 
 // applyBTTrackerOpts 按 aria2 语义合并 bt-tracker / bt-exclude-tracker：
 // - bt-exclude-tracker：逗号分隔的前缀列表，announce URL 以任一前缀开头则丢弃；

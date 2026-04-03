@@ -56,7 +56,7 @@ type FileServerInfo struct {
 // SessionAwareDriver 允许驱动在恢�?session 时重建内部状态�?
 type SessionAwareDriver interface {
 	Driver
-	LoadSessionTasks(ctx context.Context, tasks []*task.Task) error
+	LoadSessionTasks(ctx context.Context, tasks []*task.Task, globalOptions map[string]string) error
 }
 
 // PeerLister 允许驱动暴露连接中的 peer 列表�?

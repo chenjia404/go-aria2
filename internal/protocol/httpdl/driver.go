@@ -345,8 +345,9 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 }
 
 // LoadSessionTasks 恢复会话中的 HTTP 任务�?
-func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task) error {
+func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globalOptions map[string]string) error {
 	_ = ctx
+	_ = globalOptions
 	for _, saved := range tasks {
 		if saved == nil || saved.Protocol != task.Protocol("http") {
 			continue

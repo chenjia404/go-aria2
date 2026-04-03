@@ -359,7 +359,7 @@ func (d *Driver) SyncBTTrackerOptions(ctx context.Context, taskID string, opts m
 }
 
 // LoadSessionTasks 根据统一 session 将 torrent 任务注入到底层 client。
-func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task) error {
+func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globalOptions map[string]string) error {
 	for _, saved := range tasks {
 		if saved == nil || saved.Status == task.StatusRemoved {
 			continue
@@ -369,7 +369,8 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task) error
 		if err != nil {
 			return err
 		}
-		applyBTTrackerOpts(result.Spec, &result.Source, saved.Options)
+		effOpts := effectiveOptsForSessionRestore(saved, globalOptions)
+		applyBTTrackerOpts(result.Spec, &result.Source, effOpts)
 		result.Spec.AddTorrentOpts.Storage = storage.NewFile(saved.SaveDir)
 		result.Spec.AddTorrentOpts.DisallowDataDownload = true
 		result.Spec.AddTorrentOpts.DisallowDataUpload = true
@@ -395,7 +396,7 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task) error
 			go startTorrentDownload(tor)
 		}
 		if strings.EqualFold(saved.Meta["aria2.import"], "true") {
-			mode := strings.ToLower(strings.TrimSpace(saved.Options["bt.resume.mode"]))
+			mode := strings.ToLower(strings.TrimSpace(effOpts["bt.resume.mode"]))
 			if mode != "strict" {
 				FastResume(saved)
 			}

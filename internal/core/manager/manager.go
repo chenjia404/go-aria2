@@ -583,9 +583,13 @@ func (m *Manager) LoadSession(ctx context.Context) error {
 			cloned.CreatedAt = time.Now()
 		}
 		cloned.UpdatedAt = time.Now()
+		if cloned.LocalOptions != nil {
+			cloned.Options = mergeOptions(m.globalOptions, cloned.LocalOptions)
+		}
 		m.tasks[cloned.ID] = cloned
 		grouped[cloned.Protocol] = append(grouped[cloned.Protocol], cloned.Clone())
 	}
+	globalSnap := cloneOptions(m.globalOptions)
 	m.mu.Unlock()
 
 	for _, driver := range m.snapshotDrivers() {
@@ -593,7 +597,7 @@ func (m *Manager) LoadSession(ctx context.Context) error {
 		if !ok {
 			continue
 		}
-		if err := sessionDriver.LoadSessionTasks(ctx, grouped[toProtocol(driver.Name())]); err != nil {
+		if err := sessionDriver.LoadSessionTasks(ctx, grouped[toProtocol(driver.Name())], globalSnap); err != nil {
 			return err
 		}
 		m.bindDriverToProtocol(driver, toProtocol(driver.Name()))
