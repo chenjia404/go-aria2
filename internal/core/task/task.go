@@ -57,9 +57,12 @@ type Task struct {
 	ErrorMessage           string            `json:"errorMessage"`
 	Files                  []File            `json:"files"`
 	Options                map[string]string `json:"options"`
-	Meta                   map[string]string `json:"meta"`
-	CreatedAt              time.Time         `json:"createdAt"`
-	UpdatedAt              time.Time         `json:"updatedAt"`
+	// LocalOptions 为任务级选项（未与全局合并）；与 Options 二选一语义见 manager。
+	// 旧 session 无此字段时为 nil，按兼容路径仅使用 Options。
+	LocalOptions map[string]string `json:"localOptions,omitempty"`
+	Meta         map[string]string `json:"meta"`
+	CreatedAt    time.Time         `json:"createdAt"`
+	UpdatedAt    time.Time         `json:"updatedAt"`
 }
 
 // AddTaskInput 是协议驱动统一接收的新增任务输入。
@@ -83,6 +86,9 @@ func (t *Task) Clone() *Task {
 	cloned := *t
 	cloned.Files = CloneFiles(t.Files)
 	cloned.Options = cloneMap(t.Options)
+	if t.LocalOptions != nil {
+		cloned.LocalOptions = cloneMap(t.LocalOptions)
+	}
 	cloned.Meta = cloneMap(t.Meta)
 	return &cloned
 }

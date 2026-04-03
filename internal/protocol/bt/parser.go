@@ -32,6 +32,29 @@ type addResult struct {
 	Source addSource
 }
 
+// torrentSpecFromSource 从已保存的 addSource 重建仅含内建 tracker 的 Spec（与 magnet/种子一致）。
+func torrentSpecFromSource(src addSource) (*torrentlib.TorrentSpec, error) {
+	switch src.Kind {
+	case "magnet":
+		return torrentlib.TorrentSpecFromMagnetUri(src.URI)
+	case "torrent-bytes", "torrent-url":
+		if src.TorrentBase64 == "" {
+			return nil, fmt.Errorf("missing torrent payload")
+		}
+		payload, err := base64.StdEncoding.DecodeString(src.TorrentBase64)
+		if err != nil {
+			return nil, err
+		}
+		mi, _, err := loadMetaInfo(payload)
+		if err != nil {
+			return nil, err
+		}
+		return torrentlib.TorrentSpecFromMetaInfoErr(mi)
+	default:
+		return nil, fmt.Errorf("unsupported bt source kind %q", src.Kind)
+	}
+}
+
 func parseAddInput(ctx context.Context, input task.AddTaskInput) (*addResult, error) {
 	if len(input.Torrent) > 0 {
 		mi, raw, err := loadMetaInfo(input.Torrent)

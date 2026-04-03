@@ -67,12 +67,6 @@ func runDaemon(args []string) error {
 	if cfg.SeedTime > 0 {
 		logger.Printf("config warning: seed-time is accepted for aria2 compatibility, but automatic stop-seeding by time is not implemented yet")
 	}
-	if cfg.BTTracker != "" {
-		logger.Printf("config warning: bt-tracker is accepted for aria2 compatibility, but adding global extra trackers is not implemented yet")
-	}
-	if cfg.BTExcludeTracker != "" {
-		logger.Printf("config warning: bt-exclude-tracker is accepted for aria2 compatibility, but excluding trackers is not implemented yet")
-	}
 	if !cfg.BTLoadSavedMetadata {
 		logger.Printf("config warning: bt-load-saved-metadata=false is accepted for aria2 compatibility, but saved metadata loading policy is not implemented yet")
 	}

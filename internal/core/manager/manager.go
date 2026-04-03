@@ -16,6 +16,20 @@ import (
 	"github.com/chenjia404/go-aria2/internal/core/task"
 )
 
+// btTrackerSyncer 由 BT 驱动实现，用于运行期同步 tracker 列表。
+type btTrackerSyncer interface {
+	SyncBTTrackerOptions(ctx context.Context, taskID string, opts map[string]string) error
+}
+
+func optionKeysAffectBT(opts map[string]string) bool {
+	for k := range opts {
+		if k == "bt-tracker" || k == "bt-exclude-tracker" {
+			return true
+		}
+	}
+	return false
+}
+
 // Options 描述任务管理器的启动参数�?
 type Options struct {
 	DefaultDir    string
@@ -75,7 +89,8 @@ func (m *Manager) Add(ctx context.Context, input task.AddTaskInput) (*task.Task,
 	}
 
 	globalOptions := m.globalOptionsSnapshot()
-	mergedOptions := mergeOptions(globalOptions, input.Options)
+	perTaskLocal := cloneOptions(input.Options)
+	mergedOptions := mergeOptions(globalOptions, perTaskLocal)
 	if input.SaveDir == "" {
 		if dir := mergedOptions["dir"]; dir != "" {
 			input.SaveDir = dir
@@ -113,6 +128,7 @@ func (m *Manager) Add(ctx context.Context, input task.AddTaskInput) (*task.Task,
 	if created.Meta == nil {
 		created.Meta = cloneOptions(input.Meta)
 	}
+	created.LocalOptions = cloneOptions(perTaskLocal)
 	if created.CreatedAt.IsZero() {
 		created.CreatedAt = now
 	}
@@ -378,8 +394,40 @@ func (m *Manager) ChangeOption(ctx context.Context, gid string, opts map[string]
 	if err != nil {
 		return nil, err
 	}
+	m.mu.Lock()
+	t := m.tasks[taskID]
+	var syncBT bool
+	var btEff map[string]string
+	var btDriver Driver
+	if t != nil {
+		if t.LocalOptions != nil {
+			for k, v := range opts {
+				t.LocalOptions[k] = v
+			}
+			t.Options = mergeOptions(m.globalOptions, t.LocalOptions)
+		} else {
+			for k, v := range opts {
+				t.Options[k] = v
+			}
+		}
+		if t.Protocol == task.ProtocolBT && optionKeysAffectBT(opts) {
+			syncBT = true
+			btDriver = m.driverByTaskID[taskID]
+			if t.LocalOptions != nil {
+				btEff = mergeOptions(m.globalOptions, t.LocalOptions)
+			} else {
+				btEff = cloneOptions(t.Options)
+			}
+		}
+	}
+	m.mu.Unlock()
 	if err := driver.ChangeOption(ctx, taskID, cloneOptions(opts)); err != nil {
 		return nil, err
+	}
+	if syncBT {
+		if syncer, ok := btDriver.(btTrackerSyncer); ok && btEff != nil {
+			_ = syncer.SyncBTTrackerOptions(ctx, taskID, cloneOptions(btEff))
+		}
 	}
 	updated, err := m.tellStatusByID(ctx, taskID)
 	if err != nil {
@@ -401,9 +449,21 @@ func (m *Manager) GetGlobalOption() map[string]string {
 
 // ChangeGlobalOption 更新全局选项，并让后续新增任务使用新值�?
 func (m *Manager) ChangeGlobalOption(opts map[string]string) map[string]string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	needBT := false
+	for k := range opts {
+		if k == "bt-tracker" || k == "bt-exclude-tracker" {
+			needBT = true
+			break
+		}
+	}
+	type btSyncJob struct {
+		taskID string
+		eff    map[string]string
+		drv    Driver
+	}
+	var btJobs []btSyncJob
 
+	m.mu.Lock()
 	if m.globalOptions == nil {
 		m.globalOptions = make(map[string]string)
 	}
@@ -422,7 +482,41 @@ func (m *Manager) ChangeGlobalOption(opts map[string]string) map[string]string {
 			m.startPaused = parsePauseOption(map[string]string{key: value})
 		}
 	}
-	return cloneOptions(m.globalOptions)
+	if needBT {
+		for id, t := range m.tasks {
+			if t == nil || t.Protocol != task.ProtocolBT {
+				continue
+			}
+			var eff map[string]string
+			if t.LocalOptions != nil {
+				t.Options = mergeOptions(m.globalOptions, t.LocalOptions)
+				eff = mergeOptions(m.globalOptions, t.LocalOptions)
+			} else {
+				for _, k := range []string{"bt-tracker", "bt-exclude-tracker"} {
+					if _, ok := opts[k]; ok {
+						t.Options[k] = m.globalOptions[k]
+					}
+				}
+				eff = cloneOptions(t.Options)
+			}
+			btJobs = append(btJobs, btSyncJob{
+				taskID: id,
+				eff:    cloneOptions(eff),
+				drv:    m.driverByTaskID[id],
+			})
+		}
+	}
+	out := cloneOptions(m.globalOptions)
+	m.mu.Unlock()
+
+	if needBT {
+		for _, job := range btJobs {
+			if syncer, ok := job.drv.(btTrackerSyncer); ok {
+				_ = syncer.SyncBTTrackerOptions(context.Background(), job.taskID, job.eff)
+			}
+		}
+	}
+	return out
 }
 
 // GetGlobalStat 汇总全局任务统计�?
@@ -807,6 +901,9 @@ func (m *Manager) storeTask(updated *task.Task, driver Driver) *task.Task {
 		}
 		if len(cloned.Options) == 0 {
 			cloned.Options = cloneOptions(existing.Options)
+		}
+		if cloned.LocalOptions == nil && existing.LocalOptions != nil {
+			cloned.LocalOptions = cloneOptions(existing.LocalOptions)
 		}
 		if len(cloned.Meta) == 0 {
 			cloned.Meta = cloneOptions(existing.Meta)

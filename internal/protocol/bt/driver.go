@@ -160,6 +160,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 	if err != nil {
 		return nil, err
 	}
+	applyBTTrackerOpts(result.Spec, &result.Source, input.Options)
 
 	result.Spec.AddTorrentOpts.Storage = storage.NewFile(input.SaveDir)
 	result.Spec.AddTorrentOpts.DisallowDataDownload = true
@@ -329,7 +330,35 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 	return nil
 }
 
-// LoadSessionTasks 根据统一 session 重新�?torrent 任务注入到底�?client�?
+// SyncBTTrackerOptions 运行期按当前选项重建 tracker 列表并写入 anacrolix（ModifyTrackers）。
+func (d *Driver) SyncBTTrackerOptions(ctx context.Context, taskID string, opts map[string]string) error {
+	_ = ctx
+	d.mu.Lock()
+	st := d.tasks[taskID]
+	if st == nil || st.removed {
+		d.mu.Unlock()
+		return manager.ErrTaskNotFound
+	}
+	src := st.source
+	tor := st.torrent
+	d.mu.Unlock()
+
+	spec, err := torrentSpecFromSource(src)
+	if err != nil {
+		return err
+	}
+	applyBTTrackerOpts(spec, &src, opts)
+	tor.ModifyTrackers(spec.Trackers)
+
+	d.mu.Lock()
+	if st2 := d.tasks[taskID]; st2 != nil && st2.torrent == tor && !st2.removed {
+		st2.source = src
+	}
+	d.mu.Unlock()
+	return nil
+}
+
+// LoadSessionTasks 根据统一 session 将 torrent 任务注入到底层 client。
 func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task) error {
 	for _, saved := range tasks {
 		if saved == nil || saved.Status == task.StatusRemoved {
@@ -340,6 +369,7 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task) error
 		if err != nil {
 			return err
 		}
+		applyBTTrackerOpts(result.Spec, &result.Source, saved.Options)
 		result.Spec.AddTorrentOpts.Storage = storage.NewFile(saved.SaveDir)
 		result.Spec.AddTorrentOpts.DisallowDataDownload = true
 		result.Spec.AddTorrentOpts.DisallowDataUpload = true
