@@ -210,7 +210,15 @@ func (d *Driver) Remove(ctx context.Context, taskID string, force bool) error {
 	return err
 }
 
+// PurgeLocalState 在管理器摘除任务后删除内部状态。
+func (d *Driver) PurgeLocalState(taskID string) {
+	d.mu.Lock()
+	delete(d.tasks, taskID)
+	d.mu.Unlock()
+}
+
 // TellStatus 返回基于 goed2k 快照映射的统一任务状态�?
+
 func (d *Driver) TellStatus(ctx context.Context, taskID string) (*task.Task, error) {
 	_ = ctx
 	return d.snapshot("", taskID)

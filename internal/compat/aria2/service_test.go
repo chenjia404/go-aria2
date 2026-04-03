@@ -69,6 +69,10 @@ func (d *rpcStubDriver) Remove(ctx context.Context, taskID string, force bool) e
 	return nil
 }
 
+func (d *rpcStubDriver) PurgeLocalState(taskID string) {
+	delete(d.tasks, taskID)
+}
+
 func (d *rpcStubDriver) TellStatus(ctx context.Context, taskID string) (*task.Task, error) {
 	_ = ctx
 	item := d.tasks[taskID]

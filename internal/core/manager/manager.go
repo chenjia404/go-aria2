@@ -193,15 +193,22 @@ func (m *Manager) Remove(ctx context.Context, gid string, force bool) (*task.Tas
 		updated.ID = current.ID
 	}
 
-	updated = m.storeTask(updated, driver)
+	removed := updated.Clone()
+	m.mu.Lock()
+	delete(m.tasks, taskID)
+	delete(m.driverByTaskID, taskID)
+	m.mu.Unlock()
+	if p, ok := driver.(LocalStatePurger); ok {
+		p.PurgeLocalState(taskID)
+	}
 	if err := m.SaveSession(ctx); err != nil {
 		return nil, err
 	}
-	m.emit(EventTaskRemoved, updated)
+	m.emit(EventTaskRemoved, removed)
 	if err := m.fillSlots(ctx); err != nil {
 		return nil, err
 	}
-	return updated.Clone(), nil
+	return removed.Clone(), nil
 }
 
 // Pause 暂停任务�?
@@ -572,6 +579,9 @@ func (m *Manager) LoadSession(ctx context.Context) error {
 	grouped := make(map[task.Protocol][]*task.Task)
 	m.mu.Lock()
 	for _, item := range tasks {
+		if item.Status == task.StatusRemoved {
+			continue
+		}
 		cloned := item.Clone()
 		if cloned.ID == "" {
 			cloned.ID = newID()

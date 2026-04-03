@@ -27,6 +27,11 @@ type Driver interface {
 	ChangeOption(ctx context.Context, taskID string, opts map[string]string) error
 }
 
+// LocalStatePurger 可选实现：Remove 成功后由管理器调用，释放驱动内该 taskID 的状态（如内部 map 条目）。
+type LocalStatePurger interface {
+	PurgeLocalState(taskID string)
+}
+
 // PeerInfo 描述 aria2 getPeers 需要的统一 peer 视图�?
 type PeerInfo struct {
 	PeerID        string

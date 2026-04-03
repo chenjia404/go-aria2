@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -67,6 +68,10 @@ func (d *stubDriver) Remove(ctx context.Context, taskID string, force bool) erro
 		item.Status = task.StatusRemoved
 	}
 	return nil
+}
+
+func (d *stubDriver) PurgeLocalState(taskID string) {
+	delete(d.tasks, taskID)
 }
 
 func (d *stubDriver) TellStatus(ctx context.Context, taskID string) (*task.Task, error) {
@@ -172,5 +177,31 @@ func TestManagerAppliesGlobalOptions(t *testing.T) {
 	}
 	if second.Options["pause"] != "false" {
 		t.Fatalf("expected updated pause flag in merged options: %+v", second.Options)
+	}
+}
+
+func TestRemovePurgesTaskFromManager(t *testing.T) {
+	t.Parallel()
+
+	driver := newStubDriver()
+	mgr := New(Options{DefaultDir: "./default"})
+	mgr.RegisterDriver(driver)
+
+	created, err := mgr.Add(context.Background(), task.AddTaskInput{
+		URI: "http://example.com/file",
+	})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	gid := created.GID
+	if _, err := mgr.Remove(context.Background(), gid, false); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if mgr.GetByGID(gid) != nil {
+		t.Fatal("expected task removed from manager")
+	}
+	_, err = mgr.TellStatus(context.Background(), gid)
+	if !errors.Is(err, ErrTaskNotFound) {
+		t.Fatalf("TellStatus after remove: want ErrTaskNotFound, got %v", err)
 	}
 }

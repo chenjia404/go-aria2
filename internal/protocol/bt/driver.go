@@ -264,7 +264,15 @@ func (d *Driver) Remove(ctx context.Context, taskID string, force bool) error {
 	return nil
 }
 
+// PurgeLocalState 在管理器摘除任务后删除内部状态。
+func (d *Driver) PurgeLocalState(taskID string) {
+	d.mu.Lock()
+	delete(d.tasks, taskID)
+	d.mu.Unlock()
+}
+
 // TellStatus 返回基于 anacrolix/torrent 实时状态构造的统一任务模型�?
+
 func (d *Driver) TellStatus(ctx context.Context, taskID string) (*task.Task, error) {
 	_ = ctx
 	return d.snapshot("", taskID)
