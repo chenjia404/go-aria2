@@ -2,10 +2,13 @@ module github.com/chenjia404/go-aria2
 
 go 1.25.7
 
-require github.com/anacrolix/torrent v1.61.0
+require (
+	github.com/RoaringBitmap/roaring v1.2.3
+	github.com/anacrolix/torrent v1.61.0
+	github.com/monkeyWie/goed2k v0.0.0-20260403055011-a8f73dee6faa
+)
 
 require (
-	github.com/RoaringBitmap/roaring v1.2.3 // indirect
 	github.com/alecthomas/atomic v0.1.0-alpha2 // indirect
 	github.com/anacrolix/btree v0.0.0-20251201064447-d86c3fa41bd8 // indirect
 	github.com/anacrolix/chansync v0.7.0 // indirect
@@ -43,7 +46,6 @@ require (
 	github.com/klauspost/cpuid/v2 v2.2.3 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/minio/sha256-simd v1.0.0 // indirect
-	github.com/monkeyWie/goed2k v0.0.0-20260403055011-a8f73dee6faa // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/multiformats/go-multihash v0.2.3 // indirect
