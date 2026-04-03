@@ -44,9 +44,11 @@ type state struct {
 
 // Driver 使用 anacrolix/torrent 作为 BT 协议实现�?
 type Driver struct {
-	mu     sync.RWMutex
-	client *torrentlib.Client
-	tasks  map[string]*state
+	mu        sync.RWMutex
+	client    *torrentlib.Client
+	tasks     map[string]*state
+	closeOnce sync.Once
+	closeErr  error
 }
 
 func buildTorrentConfig(opts Options, listenPort int) *torrentlib.ClientConfig {
@@ -107,14 +109,27 @@ func New(opts Options) (*Driver, error) {
 
 // Close 关闭底层 torrent client�?
 func (d *Driver) Close() error {
-	if d == nil || d.client == nil {
+	if d == nil {
 		return nil
 	}
-	errs := d.client.Close()
-	if len(errs) == 0 {
-		return nil
-	}
-	return fmt.Errorf("close bt client: %v", errs[0])
+	// anacrolix/torrent 关闭时会级联释放底层持久化资源，重复关闭会放大底层锁释放异常。
+	d.closeOnce.Do(func() {
+		d.mu.Lock()
+		client := d.client
+		d.client = nil
+		d.mu.Unlock()
+
+		if client == nil {
+			return
+		}
+
+		errs := client.Close()
+		if len(errs) == 0 {
+			return
+		}
+		d.closeErr = fmt.Errorf("close bt client: %v", errs[0])
+	})
+	return d.closeErr
 }
 
 // Name 返回驱动名�?
