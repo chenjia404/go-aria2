@@ -1,0 +1,66 @@
+# This is an example .goreleaser.yml file with some sane defaults.
+# Make sure to check the documentation at http://goreleaser.com
+version: 2
+project_name: go-aria2c
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - id: go-aria2c
+    env:
+      - CGO_ENABLED=0
+    main: ./cmd/go-aria2c
+    flags:
+      - -trimpath
+      - -buildvcs=false
+    ldflags:
+      - -s -w
+
+archives:
+  -
+    id: go-aria2c
+    formats: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds_info:
+      mode: 0777
+    format_overrides:
+      - goos: windows
+        formats: zip
+
+  
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha512
+
+
+
+snapshot:
+  version_template: "{{ .Tag }}"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+dockers_v2:
+  - ids:
+      - go-aria2c
+    images:
+      - "ghcr.io/chenjia404/{{.ProjectName}}"
+      - "chenjia404/{{.ProjectName}}"
+    tags:
+      - "latest"
+      - "dev"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    dockerfile: "goreleaser.dockefile"
+    extra_files:
+      - configs/config.docker.json
+    # 关闭 SBOM/attest（默认 docker 驱动不支持 attestation，会报 “Attestation is not supported for the docker driver”）
+    sbom: false
+    flags:
+      - "--provenance=false"
+      - "--sbom=false"

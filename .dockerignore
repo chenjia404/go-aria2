@@ -1,0 +1,11 @@
+.git
+.github
+data
+docs
+go-aria2
+go-aria2.exe
+*.log
+*.tmp
+*.swp
+*.swo
+.DS_Store
