@@ -84,6 +84,76 @@ go run ./cmd/go-aria2 ctl \
   -params '[[\"https://example.com/file.torrent\"],{\"dir\":\"/downloads\"}]'
 ```
 
+**RPC 调不通时请先核对：** 进程是否已正常跑完初始化（若 BT/ED2K 初始化失败会直接退出，没有 RPC）；`enable-rpc=true`；客户端 URL 是否为 `http://<主机>:<端口>/jsonrpc`（路径必须是 `/jsonrpc`）；端口与 `rpc-listen-port` 一致。默认 **`rpc-listen-all=false`** 时只监听 **127.0.0.1**，从 Docker 宿主机、局域网其它机器访问会失败，需 **`rpc-listen-all=true`** 并放行防火墙。配置了 **`rpc-secret`** 时，参数首项需为 **`token:<密钥>`**（`ctl` 可用 `-secret` 自动加）。可先 `curl http://127.0.0.1:<端口>/healthz` 应返回 `ok`。
+
+## 编译
+
+### 当前平台直接编译
+
+Linux / macOS：
+
+```bash
+go build -trimpath -o go-aria2 ./cmd/go-aria2
+```
+
+Windows PowerShell：
+
+```powershell
+go build -trimpath -o .\go-aria2.exe .\cmd\go-aria2
+```
+
+### 为 Windows 编译
+
+建议优先生成纯 Go 可执行文件，显式关闭 `CGO`。这样可以避免额外依赖 `libgcc_s_seh-1.dll` 一类运行库，也更适合在 WSL 或 Linux 下交叉编译。
+
+64 位 Windows：
+
+```bash
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o go-aria2.exe ./cmd/go-aria2
+```
+
+32 位 Windows：
+
+```bash
+GOOS=windows GOARCH=386 CGO_ENABLED=0 go build -trimpath -o go-aria2.exe ./cmd/go-aria2
+```
+
+Windows PowerShell：
+
+```powershell
+$env:GOOS="windows"
+$env:GOARCH="amd64"
+$env:CGO_ENABLED="0"
+go build -trimpath -o .\go-aria2.exe .\cmd\go-aria2
+```
+
+### WSL 交叉编译说明
+
+如果你在 WSL 里编译，产物会在 Windows 下运行，建议固定使用：
+
+```bash
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0
+```
+
+如果省略 `CGO_ENABLED=0`，Go 可能会走外部链接，生成依赖额外 DLL 的 Windows 可执行文件。此时在 PowerShell 或 `Start-Process` 下，可能出现下面的错误：
+
+```text
+The specified executable is not a valid application for this OS platform.
+```
+
+这个报错常见原因有两个：
+
+- 生成的是带外部运行库依赖的 Windows 可执行文件，目标机器缺少对应 DLL
+- 可执行文件架构与目标系统不匹配，例如把 `amd64` 产物放到 32 位 Windows 上运行
+
+可以在 PowerShell 检查系统位数：
+
+```powershell
+[Environment]::Is64BitOperatingSystem
+```
+
+如果结果是 `False`，请改用 `GOARCH=386` 重新编译。
+
 ## 迁移 aria2 任务
 
 支持从 aria2 的 `save-session` 文件导入任务：
@@ -99,6 +169,8 @@ go run ./cmd/go-aria2 migrate-from-aria2 --session /path/to/session.txt
 - `--strict`：启用 BT 严格恢复模式
 
 迁移说明见 [docs/migrate-from-aria2.md](docs/migrate-from-aria2.md)。
+
+如果你是把本程序直接替代现有 `aria2` 守护进程使用，建议先阅读 [docs/migrate-from-aria2.md](docs/migrate-from-aria2.md) 中的“停旧服务 -> 备份 -> 导入旧 save-session -> 启动 go-aria2”完整切换流程。
 
 ## 配置文件
 
@@ -257,6 +329,19 @@ ed2k-upload-slots=3
 
 ```bash
 go test ./...
+```
+
+端到端冒烟（需本机已安装 `go`；Bash 脚本另需 `curl`）：
+
+- Bash（Git Bash / Linux / macOS）：`./scripts/e2e-core.sh`
+- Windows PowerShell：`.\scripts\e2e-core.ps1`
+
+环境变量：`E2E_RPC_PORT`（默认 `16880`）、`E2E_RPC_SECRET`、`E2E_BIN`（可指向已编译二进制，跳过脚本内 `go build`）、`E2E_SKIP_HTTP=1`（跳过公网 `addUri`）、`E2E_HTTP_URL`（自定义 HTTP 测试 URL）。
+
+进程级集成测试（不依赖 `curl`，使用 `httptest` 本地 HTTP）：
+
+```bash
+go test -tags=integration -timeout 5m ./internal/app/...
 ```
 
 ## 许可证

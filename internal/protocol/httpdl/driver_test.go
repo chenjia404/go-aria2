@@ -198,3 +198,101 @@ func TestDriverChunkedDownload(t *testing.T) {
 		t.Fatalf("expected multiple range requests, got %#v", gotRanges)
 	}
 }
+
+func TestDriverRejectsExistingFileWhenOverwriteDisabled(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte("hello world")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		_, _ = w.Write(payload)
+	}))
+	defer server.Close()
+
+	saveDir := t.TempDir()
+	outputPath := filepath.Join(saveDir, "file.txt")
+	if err := os.WriteFile(outputPath, []byte("existing"), 0o644); err != nil {
+		t.Fatalf("write existing file: %v", err)
+	}
+
+	driver := New(Options{UserAgent: "test-agent"})
+	created, err := driver.Add(context.Background(), task.AddTaskInput{
+		URIs:    []string{server.URL + "/file.txt"},
+		SaveDir: saveDir,
+		Name:    "file.txt",
+		Options: map[string]string{
+			"continue":        "false",
+			"allow-overwrite": "false",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Add returned error: %v", err)
+	}
+
+	if err := driver.Start(context.Background(), created.ID); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := driver.TellStatus(context.Background(), created.ID)
+		if err != nil {
+			t.Fatalf("TellStatus returned error: %v", err)
+		}
+		if status.Status == task.StatusError {
+			if status.ErrorMessage == "" {
+				t.Fatalf("expected error message when overwrite is disabled")
+			}
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	status, err := driver.TellStatus(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("final TellStatus returned error: %v", err)
+	}
+	if status.Status != task.StatusError {
+		t.Fatalf("unexpected status: %+v", status)
+	}
+
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read output file: %v", err)
+	}
+	if string(data) != "existing" {
+		t.Fatalf("existing file should be preserved, got %q", string(data))
+	}
+}
+
+func TestDriverAutoRenamesExistingFile(t *testing.T) {
+	t.Parallel()
+
+	saveDir := t.TempDir()
+	outputPath := filepath.Join(saveDir, "file.txt")
+	if err := os.WriteFile(outputPath, []byte("existing"), 0o644); err != nil {
+		t.Fatalf("write existing file: %v", err)
+	}
+
+	driver := New(Options{UserAgent: "test-agent"})
+	created, err := driver.Add(context.Background(), task.AddTaskInput{
+		URIs:    []string{"https://example.com/file.txt"},
+		SaveDir: saveDir,
+		Name:    "file.txt",
+		Options: map[string]string{
+			"continue":           "false",
+			"allow-overwrite":    "false",
+			"auto-file-renaming": "true",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Add returned error: %v", err)
+	}
+
+	if created.Name != "file.1.txt" {
+		t.Fatalf("expected renamed file name, got %q", created.Name)
+	}
+	if len(created.Files) != 1 || created.Files[0].Path != filepath.Join(saveDir, "file.1.txt") {
+		t.Fatalf("expected renamed output path, got %+v", created.Files)
+	}
+}

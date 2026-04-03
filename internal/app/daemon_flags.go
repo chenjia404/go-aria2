@@ -28,30 +28,38 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 	fs := flag.NewFlagSet("daemon", flag.ContinueOnError)
 
 	var (
-		configPath string
-		dir        string
-		dataDir    string
-		rpcSecret  string
-		logPath    string
-		logLevel   string
-		inputFile  string
-		outName    string
-		checksum   string
-		gid        string
-		saveSess   string
-		httpUA     string
-		httpRef    string
-		httpProxy  string
-		httpsProxy string
-		allProxy   string
+		configPath       string
+		dir              string
+		dataDir          string
+		rpcSecret        string
+		logPath          string
+		logLevel         string
+		inputFile        string
+		outName          string
+		checksum         string
+		gid              string
+		saveSess         string
+		httpUA           string
+		httpRef          string
+		httpProxy        string
+		httpsProxy       string
+		allProxy         string
+		noProxy          string
+		btMinCryptoLevel string
+		btTracker        string
+		btExcludeTracker string
+		dhtFilePath      string
+		dhtFilePath6     string
 	)
 	var (
 		rpcListenPort          int
 		rpcMaxRequestSize      int64
 		maxConcurrentDownloads int
+		maxDownloadLimit       int64
 		maxOverallDL           int64
 		maxOverallUL           int64
 		listenPort             int
+		dhtListenPort          int
 		btMaxPeers             int
 		maxConnPerServer       int
 		split                  int
@@ -61,16 +69,27 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 		ed2kMaxSources         int
 		ed2kUploadSlots        int
 		seedRatio              float64
+		seedTime               int64
 	)
 	var (
 		enableRPC          bool
 		rpcListenAll       bool
 		rpcAllowOriginAll  bool
 		enableWebSocket    bool
+		allowOverwrite     bool
+		autoFileRenaming   bool
+		followTorrent      bool
+		followMetalink     bool
 		pause              bool
+		pauseMetadata      bool
 		continueDownloads  bool
 		daemon             bool
 		enableDHT          bool
+		enableDHT6         bool
+		btForceEncryption  bool
+		btRequireCrypto    bool
+		btLoadSavedMeta    bool
+		btSaveMetadata     bool
 		checkCertificate   bool
 		checkIntegrity     bool
 		forceSave          bool
@@ -107,29 +126,49 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 	fs.IntVar(&rpcListenPort, "rpc-listen-port", 0, "rpc listen port")
 	fs.StringVar(&rpcSecret, "rpc-secret", "", "rpc secret")
 	fs.BoolVar(&enableWebSocket, "enable-websocket", false, "enable websocket notifications")
+	fs.BoolVar(&allowOverwrite, "allow-overwrite", false, "overwrite existing files")
+	fs.BoolVar(&autoFileRenaming, "auto-file-renaming", false, "auto rename when target exists")
 	fs.BoolVar(&pause, "pause", false, "start paused")
 	fs.IntVar(&listenPort, "listen-port", 0, "bt listen port")
 	fs.BoolVar(&enableDHT, "enable-dht", false, "enable dht")
+	fs.BoolVar(&enableDHT6, "enable-dht6", false, "enable ipv6 dht")
+	fs.StringVar(&dhtFilePath, "dht-file-path", "", "dht file path")
+	fs.StringVar(&dhtFilePath6, "dht-file-path6", "", "ipv6 dht file path")
+	fs.IntVar(&dhtListenPort, "dht-listen-port", 0, "dht listen port")
 	fs.IntVar(&btMaxPeers, "bt-max-peers", 0, "bt max peers")
+	fs.BoolVar(&btForceEncryption, "bt-force-encryption", false, "force bt encryption")
+	fs.BoolVar(&btRequireCrypto, "bt-require-crypto", false, "require bt crypto")
+	fs.StringVar(&btMinCryptoLevel, "bt-min-crypto-level", "", "minimum bt crypto level")
+	fs.StringVar(&btTracker, "bt-tracker", "", "extra bt trackers")
+	fs.StringVar(&btExcludeTracker, "bt-exclude-tracker", "", "exclude bt trackers")
+	fs.BoolVar(&btLoadSavedMeta, "bt-load-saved-metadata", false, "load saved bt metadata")
+	fs.BoolVar(&btSaveMetadata, "bt-save-metadata", false, "save bt metadata")
 	fs.BoolVar(&checkIntegrity, "V", false, "check integrity")
 	fs.BoolVar(&checkIntegrity, "check-integrity", false, "check integrity")
 	fs.BoolVar(&forceSave, "force-save", false, "force save")
 	fs.StringVar(&gid, "gid", "", "set gid")
 	fs.StringVar(&checksum, "checksum", "", "checksum")
 	fs.Float64Var(&seedRatio, "seed-ratio", 0, "seed ratio")
+	fs.Int64Var(&seedTime, "seed-time", 0, "seed time in minutes")
 	fs.StringVar(&saveSess, "save-session", "", "save session path")
+	fs.Int64Var(&maxDownloadLimit, "max-download-limit", 0, "download limit")
 	fs.Int64Var(&saveSessInterval, "save-session-interval", 0, "save session interval seconds")
 	fs.Int64Var(&maxOverallDL, "max-overall-download-limit", 0, "overall download limit")
 	fs.Int64Var(&maxOverallUL, "max-overall-upload-limit", 0, "overall upload limit")
 	fs.StringVar(&httpUA, "http-user-agent", "", "http user agent")
+	fs.StringVar(&httpUA, "user-agent", "", "user agent")
 	fs.StringVar(&httpRef, "http-referer", "", "http referer")
 	fs.StringVar(&httpProxy, "http-proxy", "", "http proxy")
 	fs.StringVar(&httpsProxy, "https-proxy", "", "https proxy")
 	fs.StringVar(&allProxy, "all-proxy", "", "all proxy")
+	fs.StringVar(&noProxy, "no-proxy", "", "no proxy")
 	fs.IntVar(&maxConnPerServer, "max-connection-per-server", 0, "max connections per server")
 	fs.IntVar(&maxConnPerServer, "x", 0, "max connections per server")
 	fs.IntVar(&split, "split", 0, "split count")
 	fs.IntVar(&split, "s", 0, "split count")
+	fs.BoolVar(&followTorrent, "follow-torrent", false, "follow torrent/metalink downloads")
+	fs.BoolVar(&followMetalink, "follow-metalink", false, "follow metalink downloads")
+	fs.BoolVar(&pauseMetadata, "pause-metadata", false, "pause metadata downloads")
 	fs.BoolVar(&checkCertificate, "check-certificate", false, "check certificate")
 	fs.BoolVar(&ed2kEnable, "ed2k-enable", false, "enable ed2k")
 	fs.IntVar(&ed2kListenPort, "ed2k-listen-port", 0, "ed2k listen port")
@@ -158,6 +197,8 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 			opts.inputFile = inputFile
 		case "j", "max-concurrent-downloads":
 			opts.values["max-concurrent-downloads"] = maxConcurrentDownloads
+		case "max-download-limit":
+			opts.values["max-download-limit"] = maxDownloadLimit
 		case "D", "daemon":
 			opts.values["daemon"] = daemon
 		case "c", "continue":
@@ -180,6 +221,10 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 			opts.values["rpc-secret"] = rpcSecret
 		case "enable-websocket":
 			opts.values["enable-websocket"] = enableWebSocket
+		case "allow-overwrite":
+			opts.values["allow-overwrite"] = allowOverwrite
+		case "auto-file-renaming":
+			opts.values["auto-file-renaming"] = autoFileRenaming
 		case "pause":
 			opts.values["pause"] = pause
 		case "o", "out":
@@ -188,8 +233,30 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 			opts.values["listen-port"] = listenPort
 		case "enable-dht":
 			opts.values["enable-dht"] = enableDHT
+		case "enable-dht6":
+			opts.values["enable-dht6"] = enableDHT6
+		case "dht-file-path":
+			opts.values["dht-file-path"] = dhtFilePath
+		case "dht-file-path6":
+			opts.values["dht-file-path6"] = dhtFilePath6
+		case "dht-listen-port":
+			opts.values["dht-listen-port"] = dhtListenPort
 		case "bt-max-peers":
 			opts.values["bt-max-peers"] = btMaxPeers
+		case "bt-force-encryption":
+			opts.values["bt-force-encryption"] = btForceEncryption
+		case "bt-require-crypto":
+			opts.values["bt-require-crypto"] = btRequireCrypto
+		case "bt-min-crypto-level":
+			opts.values["bt-min-crypto-level"] = btMinCryptoLevel
+		case "bt-tracker":
+			opts.values["bt-tracker"] = btTracker
+		case "bt-exclude-tracker":
+			opts.values["bt-exclude-tracker"] = btExcludeTracker
+		case "bt-load-saved-metadata":
+			opts.values["bt-load-saved-metadata"] = btLoadSavedMeta
+		case "bt-save-metadata":
+			opts.values["bt-save-metadata"] = btSaveMetadata
 		case "V", "check-integrity":
 			opts.startup["check-integrity"] = fmt.Sprintf("%t", checkIntegrity)
 		case "force-save":
@@ -200,6 +267,8 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 			opts.startup["checksum"] = checksum
 		case "seed-ratio":
 			opts.values["seed-ratio"] = seedRatio
+		case "seed-time":
+			opts.values["seed-time"] = seedTime
 		case "save-session":
 			opts.values["save-session"] = saveSess
 		case "save-session-interval":
@@ -208,8 +277,9 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 			opts.values["max-overall-download-limit"] = maxOverallDL
 		case "max-overall-upload-limit":
 			opts.values["max-overall-upload-limit"] = maxOverallUL
-		case "http-user-agent":
+		case "http-user-agent", "user-agent":
 			opts.values["http-user-agent"] = httpUA
+			opts.values["user-agent"] = httpUA
 		case "http-referer":
 			opts.values["http-referer"] = httpRef
 		case "http-proxy":
@@ -218,6 +288,8 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 			opts.values["https-proxy"] = httpsProxy
 		case "all-proxy":
 			opts.values["all-proxy"] = allProxy
+		case "no-proxy":
+			opts.values["no-proxy"] = noProxy
 		case "max-connection-per-server":
 			opts.values["max-connection-per-server"] = maxConnPerServer
 			opts.startup["max-connection-per-server"] = fmt.Sprintf("%d", maxConnPerServer)
@@ -230,6 +302,12 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 		case "s":
 			opts.values["split"] = split
 			opts.startup["split"] = fmt.Sprintf("%d", split)
+		case "follow-torrent":
+			opts.values["follow-torrent"] = followTorrent
+		case "follow-metalink":
+			opts.values["follow-metalink"] = followMetalink
+		case "pause-metadata":
+			opts.values["pause-metadata"] = pauseMetadata
 		case "check-certificate":
 			opts.values["check-certificate"] = checkCertificate
 		case "ed2k-enable":
@@ -295,6 +373,8 @@ func applyDaemonCLIOptions(cfg *config.Config, opts daemonCLIOptions) error {
 			cfg.DataDir = value.(string)
 		case "max-concurrent-downloads":
 			cfg.MaxConcurrentDownloads = value.(int)
+		case "max-download-limit":
+			cfg.MaxDownloadLimit = value.(int64)
 		case "daemon":
 			cfg.Daemon = value.(bool)
 		case "continue":
@@ -317,16 +397,44 @@ func applyDaemonCLIOptions(cfg *config.Config, opts daemonCLIOptions) error {
 			cfg.RPCSecret = value.(string)
 		case "enable-websocket":
 			cfg.EnableWebSocket = value.(bool)
+		case "allow-overwrite":
+			cfg.AllowOverwrite = value.(bool)
+		case "auto-file-renaming":
+			cfg.AutoFileRenaming = value.(bool)
 		case "pause":
 			cfg.Pause = value.(bool)
 		case "listen-port":
 			cfg.ListenPort = value.(int)
 		case "enable-dht":
 			cfg.EnableDHT = value.(bool)
+		case "enable-dht6":
+			cfg.EnableDHT6 = value.(bool)
+		case "dht-file-path":
+			cfg.DHTFilePath = value.(string)
+		case "dht-file-path6":
+			cfg.DHTFilePath6 = value.(string)
+		case "dht-listen-port":
+			cfg.DHTListenPort = value.(int)
 		case "bt-max-peers":
 			cfg.BTMaxPeers = value.(int)
+		case "bt-force-encryption":
+			cfg.BTForceEncryption = value.(bool)
+		case "bt-require-crypto":
+			cfg.BTRequireCrypto = value.(bool)
+		case "bt-min-crypto-level":
+			cfg.BTMinCryptoLevel = value.(string)
+		case "bt-tracker":
+			cfg.BTTracker = value.(string)
+		case "bt-exclude-tracker":
+			cfg.BTExcludeTracker = value.(string)
+		case "bt-load-saved-metadata":
+			cfg.BTLoadSavedMetadata = value.(bool)
+		case "bt-save-metadata":
+			cfg.BTSaveMetadata = value.(bool)
 		case "seed-ratio":
 			cfg.SeedRatio = value.(float64)
+		case "seed-time":
+			cfg.SeedTime = time.Duration(value.(int64)) * time.Minute
 		case "save-session":
 			cfg.SaveSession = value.(string)
 		case "save-session-interval":
@@ -337,6 +445,8 @@ func applyDaemonCLIOptions(cfg *config.Config, opts daemonCLIOptions) error {
 			cfg.MaxOverallUploadLimit = value.(int64)
 		case "http-user-agent":
 			cfg.HTTPUserAgent = value.(string)
+		case "user-agent":
+			cfg.HTTPUserAgent = value.(string)
 		case "http-referer":
 			cfg.HTTPReferer = value.(string)
 		case "http-proxy":
@@ -345,10 +455,18 @@ func applyDaemonCLIOptions(cfg *config.Config, opts daemonCLIOptions) error {
 			cfg.HTTPSProxy = value.(string)
 		case "all-proxy":
 			cfg.AllProxy = value.(string)
+		case "no-proxy":
+			cfg.NoProxy = value.(string)
 		case "max-connection-per-server":
 			cfg.MaxConnectionPerServer = value.(int)
 		case "split":
 			cfg.Split = value.(int)
+		case "follow-torrent":
+			cfg.FollowTorrent = value.(bool)
+		case "follow-metalink":
+			cfg.FollowMetalink = value.(bool)
+		case "pause-metadata":
+			cfg.PauseMetadata = value.(bool)
 		case "check-certificate":
 			cfg.CheckCertificate = value.(bool)
 		case "ed2k-enable":

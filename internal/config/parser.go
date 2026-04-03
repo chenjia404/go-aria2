@@ -104,6 +104,12 @@ func apply(cfg *Config, key, value string) error {
 			return fmt.Errorf("invalid max-concurrent-downloads: %w", err)
 		}
 		cfg.MaxConcurrentDownloads = v
+	case "max-download-limit":
+		v, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid max-download-limit: %w", err)
+		}
+		cfg.MaxDownloadLimit = v
 	case "max-overall-download-limit":
 		v, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
@@ -116,6 +122,18 @@ func apply(cfg *Config, key, value string) error {
 			return fmt.Errorf("invalid max-overall-upload-limit: %w", err)
 		}
 		cfg.MaxOverallUploadLimit = v
+	case "allow-overwrite":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.AllowOverwrite = v
+	case "auto-file-renaming":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.AutoFileRenaming = v
 	case "pause":
 		v, err := parseBool(value)
 		if err != nil {
@@ -150,19 +168,91 @@ func apply(cfg *Config, key, value string) error {
 			return err
 		}
 		cfg.EnableDHT = v
+	case "enable-dht6":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.EnableDHT6 = v
+	case "dht-file-path":
+		cfg.DHTFilePath = value
+	case "dht-file-path6":
+		cfg.DHTFilePath6 = value
+	case "dht-listen-port":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid dht-listen-port: %w", err)
+		}
+		cfg.DHTListenPort = v
 	case "bt-max-peers":
 		v, err := strconv.Atoi(value)
 		if err != nil {
 			return fmt.Errorf("invalid bt-max-peers: %w", err)
 		}
 		cfg.BTMaxPeers = v
+	case "bt-force-encryption":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.BTForceEncryption = v
+	case "bt-require-crypto":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.BTRequireCrypto = v
+	case "bt-min-crypto-level":
+		cfg.BTMinCryptoLevel = strings.ToLower(strings.TrimSpace(value))
+	case "bt-tracker":
+		cfg.BTTracker = value
+	case "bt-exclude-tracker":
+		cfg.BTExcludeTracker = value
+	case "bt-load-saved-metadata":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.BTLoadSavedMetadata = v
+	case "bt-save-metadata":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.BTSaveMetadata = v
+	case "follow-torrent":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.FollowTorrent = v
+	case "follow-metalink":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.FollowMetalink = v
+	case "pause-metadata":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.PauseMetadata = v
 	case "seed-ratio":
 		v, err := strconv.ParseFloat(value, 64)
 		if err != nil {
 			return fmt.Errorf("invalid seed-ratio: %w", err)
 		}
 		cfg.SeedRatio = v
+	case "seed-time":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid seed-time: %w", err)
+		}
+		cfg.SeedTime = time.Duration(v) * time.Minute
 	case "http-user-agent":
+		cfg.HTTPUserAgent = value
+	case "user-agent":
 		cfg.HTTPUserAgent = value
 	case "http-referer":
 		cfg.HTTPReferer = value
@@ -172,6 +262,8 @@ func apply(cfg *Config, key, value string) error {
 		cfg.HTTPSProxy = value
 	case "all-proxy":
 		cfg.AllProxy = value
+	case "no-proxy":
+		cfg.NoProxy = value
 	case "max-connection-per-server":
 		v, err := strconv.Atoi(value)
 		if err != nil {

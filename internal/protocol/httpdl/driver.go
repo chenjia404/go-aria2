@@ -97,6 +97,14 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 	}
 	name := deriveName(sourceURL, input.Name)
 	outputPath := outputPathFor(input.SaveDir, name)
+	if shouldAutoRenameOnAdd(input.Options, outputPath) {
+		renamedPath, renamedName, err := nextAvailablePath(outputPath)
+		if err != nil {
+			return nil, err
+		}
+		outputPath = renamedPath
+		name = renamedName
+	}
 
 	item := &task.Task{
 		ID:       newID(),
@@ -407,6 +415,13 @@ func (d *Driver) download(ctx context.Context, taskID string) {
 	}
 
 	existingSize, _ := fileSize(st.outputPath)
+	if shouldRejectExistingFile(st.task.Options, existingSize) {
+		d.fail(taskID, fmt.Errorf("target file already exists and allow-overwrite=false: %s", st.outputPath))
+		return
+	}
+	if shouldResetExistingFile(st.task.Options, existingSize) {
+		existingSize = 0
+	}
 	total, acceptRanges, err := d.probeResource(ctx, st)
 	if err != nil && total <= 0 {
 		total = 0
@@ -880,6 +895,14 @@ func buildTaskLimiter(base *byteLimiter, defaults Options, opts map[string]strin
 	if opts == nil {
 		return base
 	}
+	if value, ok := opts["max-download-limit"]; ok {
+		if parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil {
+			if parsed <= 0 {
+				return nil
+			}
+			return newByteLimiter(parsed)
+		}
+	}
 	if value, ok := opts["max-overall-download-limit"]; ok {
 		if parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil {
 			if parsed <= 0 {
@@ -920,6 +943,57 @@ func resolveStringOption(opts map[string]string, key, fallback string) string {
 	return fallback
 }
 
+func nextAvailablePath(original string) (string, string, error) {
+	dir := filepath.Dir(original)
+	base := filepath.Base(original)
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	for i := 1; i < 10000; i++ {
+		candidateName := fmt.Sprintf("%s.%d%s", stem, i, ext)
+		candidatePath := filepath.Join(dir, candidateName)
+		_, err := os.Stat(candidatePath)
+		if os.IsNotExist(err) {
+			return candidatePath, candidateName, nil
+		}
+		if err != nil {
+			return "", "", err
+		}
+	}
+	return "", "", fmt.Errorf("unable to find available file name for %s", original)
+}
+
+func resolveBoolOption(opts map[string]string, key string, fallback bool) bool {
+	if opts == nil {
+		return fallback
+	}
+	value, ok := opts[key]
+	if !ok {
+		return fallback
+	}
+	parsed, err := parseBoolOption(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func shouldAutoRenameOnAdd(opts map[string]string, outputPath string) bool {
+	if outputPath == "" {
+		return false
+	}
+	info, err := os.Stat(outputPath)
+	if err != nil {
+		return false
+	}
+	if info.IsDir() {
+		return false
+	}
+	allowOverwrite := resolveBoolOption(opts, "allow-overwrite", false)
+	continueDownloads := resolveBoolOption(opts, "continue", true)
+	autoFileRenaming := resolveBoolOption(opts, "auto-file-renaming", false)
+	return autoFileRenaming && !allowOverwrite && !continueDownloads
+}
+
 func parseBoolOption(value string) (bool, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "true", "yes", "1":
@@ -929,6 +1003,24 @@ func parseBoolOption(value string) (bool, error) {
 	default:
 		return false, fmt.Errorf("invalid boolean value %q", value)
 	}
+}
+
+func shouldRejectExistingFile(opts map[string]string, existingSize int64) bool {
+	if existingSize <= 0 {
+		return false
+	}
+	allowOverwrite := resolveBoolOption(opts, "allow-overwrite", false)
+	continueDownloads := resolveBoolOption(opts, "continue", true)
+	return !allowOverwrite && !continueDownloads
+}
+
+func shouldResetExistingFile(opts map[string]string, existingSize int64) bool {
+	if existingSize <= 0 {
+		return false
+	}
+	allowOverwrite := resolveBoolOption(opts, "allow-overwrite", false)
+	continueDownloads := resolveBoolOption(opts, "continue", true)
+	return allowOverwrite && !continueDownloads
 }
 
 func optionInt(options map[string]string, key string, fallback int) int {

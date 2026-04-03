@@ -55,13 +55,16 @@ func runCtl(args []string) error {
 
 	resp, err := http.Post(endpoint, "application/json", bytes.NewReader(payload))
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return fmt.Errorf("request failed: %w\n提示: 确认进程已启动且 enable-rpc=true；端口与 -endpoint 一致（默认 6800）；若从本机以外访问需设置 rpc-listen-all=true 并放行防火墙；本仓库 RPC 路径为 /jsonrpc", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("read response failed: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("http %s: %s", resp.Status, string(body))
 	}
 
 	var pretty bytes.Buffer

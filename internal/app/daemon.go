@@ -49,6 +49,45 @@ func runDaemon(args []string) error {
 	for _, warning := range cfg.Warnings {
 		logger.Printf("config warning: %s", warning)
 	}
+	if cfg.BTForceEncryption {
+		logger.Printf("config warning: bt-force-encryption is accepted for aria2 compatibility, but strict BT encryption is not implemented yet")
+	}
+	if cfg.BTRequireCrypto {
+		logger.Printf("config warning: bt-require-crypto is accepted for aria2 compatibility, but strict BT crypto policy is not implemented yet")
+	}
+	if cfg.BTMinCryptoLevel != "" && cfg.BTMinCryptoLevel != "plain" {
+		logger.Printf("config warning: bt-min-crypto-level=%s is accepted for aria2 compatibility, but crypto level enforcement is not implemented yet", cfg.BTMinCryptoLevel)
+	}
+	if !cfg.FollowTorrent {
+		logger.Printf("config warning: follow-torrent=false is accepted for aria2 compatibility, but downloading .torrent files without following is not implemented yet")
+	}
+	if cfg.SeedTime > 0 {
+		logger.Printf("config warning: seed-time is accepted for aria2 compatibility, but automatic stop-seeding by time is not implemented yet")
+	}
+	if cfg.BTTracker != "" {
+		logger.Printf("config warning: bt-tracker is accepted for aria2 compatibility, but adding global extra trackers is not implemented yet")
+	}
+	if cfg.BTExcludeTracker != "" {
+		logger.Printf("config warning: bt-exclude-tracker is accepted for aria2 compatibility, but excluding trackers is not implemented yet")
+	}
+	if !cfg.BTLoadSavedMetadata {
+		logger.Printf("config warning: bt-load-saved-metadata=false is accepted for aria2 compatibility, but saved metadata loading policy is not implemented yet")
+	}
+	if !cfg.BTSaveMetadata {
+		logger.Printf("config warning: bt-save-metadata=false is accepted for aria2 compatibility, but metadata persistence policy is not implemented yet")
+	}
+	if cfg.DHTFilePath != "" || cfg.DHTFilePath6 != "" || cfg.DHTListenPort != 0 || !cfg.EnableDHT6 {
+		logger.Printf("config warning: dht-file-path, dht-file-path6, dht-listen-port, and enable-dht6 are accepted for aria2 compatibility, but custom DHT state/listen behavior is not implemented yet")
+	}
+	if !cfg.FollowMetalink {
+		logger.Printf("config warning: follow-metalink=false is accepted for aria2 compatibility, but metalink handling controls are not implemented yet")
+	}
+	if cfg.PauseMetadata {
+		logger.Printf("config warning: pause-metadata is accepted for aria2 compatibility, but metadata pause workflow is not implemented yet")
+	}
+	if cfg.NoProxy != "" {
+		logger.Printf("config warning: no-proxy is accepted for aria2 compatibility, but proxy bypass rules are not implemented yet")
+	}
 
 	store := session.NewFileStore(runtimePaths.sessionPath)
 	mgr := manager.New(manager.Options{
@@ -139,13 +178,17 @@ func runDaemon(args []string) error {
 
 	if cfg.EnableRPC {
 		go func() {
-			logger.Printf("json-rpc listening on %s", server.Addr)
+			rpcURL := rpcEndpointURL(cfg.RPCListenPort, cfg.RPCListenAll)
+			logger.Printf("json-rpc listening on %s (POST: %s)", server.Addr, rpcURL)
+			if !cfg.RPCListenAll {
+				logger.Printf("rpc 仅绑定本机回环；ERR_CONNECTION_REFUSED 常见于用局域网 IP/容器 IP 访问——请改用 127.0.0.1，或设置 rpc-listen-all=true 并放行防火墙")
+			}
 			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				logger.Fatalf("rpc server failed: %v", err)
 			}
 		}()
 	} else {
-		logger.Printf("rpc disabled by config")
+		logger.Printf("rpc disabled by config (enable-rpc=false)，无法提供 JSON-RPC")
 	}
 
 	<-stop
@@ -203,16 +246,37 @@ func resolveRuntimePaths(cfg *config.Config) runtimePaths {
 func buildGlobalOptions(cfg *config.Config) map[string]string {
 	return map[string]string{
 		"dir":                        cfg.Dir,
+		"allow-overwrite":            strconv.FormatBool(cfg.AllowOverwrite),
+		"auto-file-renaming":         strconv.FormatBool(cfg.AutoFileRenaming),
 		"pause":                      strconv.FormatBool(cfg.Pause),
+		"continue":                   strconv.FormatBool(cfg.ContinueDownloads),
 		"max-concurrent-downloads":   strconv.Itoa(cfg.MaxConcurrentDownloads),
+		"max-download-limit":         strconv.FormatInt(cfg.MaxDownloadLimit, 10),
 		"max-overall-download-limit": strconv.FormatInt(cfg.MaxOverallDownloadLimit, 10),
 		"max-overall-upload-limit":   strconv.FormatInt(cfg.MaxOverallUploadLimit, 10),
 		"seed-ratio":                 strconv.FormatFloat(cfg.SeedRatio, 'f', -1, 64),
+		"seed-time":                  strconv.FormatInt(int64(cfg.SeedTime/time.Minute), 10),
+		"dht-file-path":              cfg.DHTFilePath,
+		"dht-file-path6":             cfg.DHTFilePath6,
+		"dht-listen-port":            strconv.Itoa(cfg.DHTListenPort),
+		"enable-dht6":                strconv.FormatBool(cfg.EnableDHT6),
+		"bt-force-encryption":        strconv.FormatBool(cfg.BTForceEncryption),
+		"bt-require-crypto":          strconv.FormatBool(cfg.BTRequireCrypto),
+		"bt-min-crypto-level":        cfg.BTMinCryptoLevel,
+		"bt-tracker":                 cfg.BTTracker,
+		"bt-exclude-tracker":         cfg.BTExcludeTracker,
+		"bt-load-saved-metadata":     strconv.FormatBool(cfg.BTLoadSavedMetadata),
+		"bt-save-metadata":           strconv.FormatBool(cfg.BTSaveMetadata),
+		"follow-torrent":             strconv.FormatBool(cfg.FollowTorrent),
+		"follow-metalink":            strconv.FormatBool(cfg.FollowMetalink),
+		"pause-metadata":             strconv.FormatBool(cfg.PauseMetadata),
 		"http-user-agent":            cfg.HTTPUserAgent,
+		"user-agent":                 cfg.HTTPUserAgent,
 		"http-referer":               cfg.HTTPReferer,
 		"http-proxy":                 cfg.HTTPProxy,
 		"https-proxy":                cfg.HTTPSProxy,
 		"all-proxy":                  cfg.AllProxy,
+		"no-proxy":                   cfg.NoProxy,
 		"max-connection-per-server":  strconv.Itoa(cfg.MaxConnectionPerServer),
 		"split":                      strconv.Itoa(cfg.Split),
 		"check-certificate":          strconv.FormatBool(cfg.CheckCertificate),
@@ -249,6 +313,18 @@ func listenAddr(port int, listenAll bool) string {
 		return ":" + strconv.Itoa(port)
 	}
 	return "127.0.0.1:" + strconv.Itoa(port)
+}
+
+// rpcEndpointURL 用于日志示例；rpc-listen-all=true 时局域网需把主机名换成本机 IP。
+func rpcEndpointURL(port int, listenAll bool) string {
+	if port <= 0 {
+		port = 6800
+	}
+	u := "http://127.0.0.1:" + strconv.Itoa(port) + "/jsonrpc"
+	if listenAll {
+		return u + "（监听所有网卡；外机访问请用本机局域网 IP 替代 127.0.0.1）"
+	}
+	return u
 }
 
 func newLogger(cfg *config.Config) (*log.Logger, io.Closer, error) {

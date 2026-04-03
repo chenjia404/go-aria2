@@ -49,19 +49,53 @@ type Driver struct {
 	tasks  map[string]*state
 }
 
-// New 创建 BT 驱动�?
-func New(opts Options) (*Driver, error) {
+func buildTorrentConfig(opts Options, listenPort int) *torrentlib.ClientConfig {
 	cfg := torrentlib.NewDefaultClientConfig()
 	cfg.DataDir = opts.DataDir
-	cfg.ListenPort = opts.ListenPort
+	cfg.ListenPort = listenPort
 	cfg.NoDHT = !opts.EnableDHT
 	if opts.MaxPeers > 0 {
 		cfg.EstablishedConnsPerTorrent = opts.MaxPeers
 		cfg.TorrentPeersHighWater = opts.MaxPeers * 4
 		cfg.TorrentPeersLowWater = max(20, opts.MaxPeers/2)
 	}
+	return cfg
+}
 
-	client, err := torrentlib.NewClient(cfg)
+func newTorrentClient(opts Options) (*torrentlib.Client, error) {
+	client, err := torrentlib.NewClient(buildTorrentConfig(opts, opts.ListenPort))
+	if err == nil {
+		return client, nil
+	}
+	// 固定端口：多协议绑定失败时换动态端口
+	if opts.ListenPort != 0 {
+		log.Printf("[bt] listen on port %d failed: %v; retrying with listen-port=0", opts.ListenPort, err)
+		client, err = torrentlib.NewClient(buildTorrentConfig(opts, 0))
+		if err == nil {
+			return client, nil
+		}
+	}
+	// Windows 常见：udp4 报 WSAEACCES（权限/防火墙/Hyper-V 保留端口等），或 IPv6 UDP 异常
+	log.Printf("[bt] listen failed: %v; retrying with DisableIPv6", err)
+	cfg := buildTorrentConfig(opts, 0)
+	cfg.DisableIPv6 = true
+	client, err = torrentlib.NewClient(cfg)
+	if err == nil {
+		return client, nil
+	}
+	// 不再监听 UDP：仅 TCP BT（无 uTP、无 DHT），仍可与多数 peer 通信
+	log.Printf("[bt] listen failed: %v; retrying TCP-only (DisableUTP, NoDHT)", err)
+	cfg2 := buildTorrentConfig(opts, 0)
+	cfg2.DisableIPv6 = true
+	cfg2.DisableUTP = true
+	cfg2.NoDHT = true
+	client, err = torrentlib.NewClient(cfg2)
+	return client, err
+}
+
+// New 创建 BT 驱动�?
+func New(opts Options) (*Driver, error) {
+	client, err := newTorrentClient(opts)
 	if err != nil {
 		return nil, err
 	}
