@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/chenjia404/go-aria2/internal/core/task"
@@ -203,5 +204,54 @@ func TestRemovePurgesTaskFromManager(t *testing.T) {
 	_, err = mgr.TellStatus(context.Background(), gid)
 	if !errors.Is(err, ErrTaskNotFound) {
 		t.Fatalf("TellStatus after remove: want ErrTaskNotFound, got %v", err)
+	}
+}
+
+func TestRemoveConcurrentSameGID(t *testing.T) {
+	t.Parallel()
+
+	driver := newStubDriver()
+	mgr := New(Options{DefaultDir: "./default"})
+	mgr.RegisterDriver(driver)
+
+	created, err := mgr.Add(context.Background(), task.AddTaskInput{
+		URI: "http://example.com/file",
+	})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	gid := created.GID
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	errs := make([]error, 2)
+	start := make(chan struct{})
+	for i := 0; i < 2; i++ {
+		i := i
+		go func() {
+			<-start
+			_, errs[i] = mgr.Remove(context.Background(), gid, false)
+			wg.Done()
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	var ok, notFound int
+	for _, e := range errs {
+		switch {
+		case e == nil:
+			ok++
+		case errors.Is(e, ErrTaskNotFound):
+			notFound++
+		default:
+			t.Fatalf("unexpected error: %v", e)
+		}
+	}
+	if ok != 1 || notFound != 1 {
+		t.Fatalf("want one success and one ErrTaskNotFound, got ok=%d notFound=%d errs=%v", ok, notFound, errs)
+	}
+	if mgr.GetByGID(gid) != nil {
+		t.Fatal("task should be removed")
 	}
 }

@@ -53,6 +53,9 @@ type Manager struct {
 	subMu          sync.RWMutex
 	nextSubID      int
 	subscribers    map[int]chan Event
+
+	removeMu    sync.Mutex
+	removeLocks map[string]*sync.Mutex
 }
 
 // New 创建任务管理器�?
@@ -65,6 +68,7 @@ func New(opts Options) *Manager {
 	return &Manager{
 		tasks:          make(map[string]*task.Task),
 		driverByTaskID: make(map[string]Driver),
+		removeLocks:    make(map[string]*sync.Mutex),
 		defaultDir:     opts.DefaultDir,
 		maxConcurrent:  maxConcurrent,
 		startPaused:    opts.StartPaused,
@@ -169,10 +173,37 @@ func (m *Manager) Add(ctx context.Context, input task.AddTaskInput) (*task.Task,
 }
 
 // Remove 删除任务�?
+func (m *Manager) removeMutexFor(taskID string) *sync.Mutex {
+	m.removeMu.Lock()
+	defer m.removeMu.Unlock()
+	if mu, ok := m.removeLocks[taskID]; ok {
+		return mu
+	}
+	mu := &sync.Mutex{}
+	m.removeLocks[taskID] = mu
+	return mu
+}
+
 func (m *Manager) Remove(ctx context.Context, gid string, force bool) (*task.Task, error) {
 	taskID, current, driver, err := m.lookupByGID(gid)
 	if err != nil {
 		return nil, err
+	}
+
+	taskMu := m.removeMutexFor(taskID)
+	taskMu.Lock()
+	defer func() {
+		taskMu.Unlock()
+		m.removeMu.Lock()
+		delete(m.removeLocks, taskID)
+		m.removeMu.Unlock()
+	}()
+
+	m.mu.RLock()
+	_, stillThere := m.tasks[taskID]
+	m.mu.RUnlock()
+	if !stillThere {
+		return nil, ErrTaskNotFound
 	}
 
 	if err := driver.Remove(ctx, taskID, force); err != nil {
