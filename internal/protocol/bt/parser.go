@@ -244,7 +244,7 @@ func placeholderFiles(source addSource, saveDir, name string) []task.File {
 		uris = append(uris, source.URI)
 	}
 	return []task.File{{
-		Index:           0,
+		Index:           1,
 		Path:            resolved,
 		Length:          source.TotalLength,
 		CompletedLength: 0,

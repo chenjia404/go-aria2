@@ -40,6 +40,8 @@ type state struct {
 	lastReadBytes  int64
 	lastWriteBytes int64
 	lastSampleAt   time.Time
+	// selectFile 为 aria2 的 select-file 原始串；空表示下载全部文件（与未指定一致）。
+	selectFile string
 }
 
 // Driver 使用 anacrolix/torrent 作为 BT 协议实现�?
@@ -187,10 +189,11 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 
 	d.mu.Lock()
 	d.tasks[item.ID] = &state{
-		torrent: tor,
-		source:  result.Source,
-		paused:  false,
-		started: false,
+		torrent:    tor,
+		source:     result.Source,
+		paused:     false,
+		started:    false,
+		selectFile: strings.TrimSpace(input.Options["select-file"]),
 	}
 	d.mu.Unlock()
 
@@ -219,7 +222,7 @@ func (d *Driver) Start(ctx context.Context, taskID string) error {
 	state.paused = false
 	state.torrent.AllowDataUpload()
 	state.torrent.AllowDataDownload()
-	go startTorrentDownload(state.torrent)
+	go d.scheduleBTFileSelection(state)
 	return nil
 }
 
@@ -327,13 +330,23 @@ func (d *Driver) GetPeers(ctx context.Context, taskID string) ([]manager.PeerInf
 	return out, nil
 }
 
-// ChangeOption 支持 pause 选项的动态切换，其余选项�?core 层保存在 Task.Options�?
+// ChangeOption 支持 pause、select-file 等运行期切换；其余选项由 core 层保存在 Task.Options。
 func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[string]string) error {
 	if shouldPause, ok := opts["pause"]; ok {
 		if strings.EqualFold(shouldPause, "true") || strings.EqualFold(shouldPause, "yes") || shouldPause == "1" {
-			return d.Pause(ctx, taskID, false)
+			if err := d.Pause(ctx, taskID, false); err != nil {
+				return err
+			}
+		} else {
+			if err := d.Start(ctx, taskID); err != nil {
+				return err
+			}
 		}
-		return d.Start(ctx, taskID)
+	}
+	if _, ok := opts["select-file"]; ok {
+		if err := d.setSelectFile(taskID, opts["select-file"]); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -392,16 +405,17 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 		}
 
 		st := &state{
-			torrent: tor,
-			source:  result.Source,
-			started: saved.Status == task.StatusActive,
-			paused:  saved.Status == task.StatusPaused,
+			torrent:    tor,
+			source:     result.Source,
+			started:    saved.Status == task.StatusActive,
+			paused:     saved.Status == task.StatusPaused,
+			selectFile: strings.TrimSpace(effOpts["select-file"]),
 		}
 
 		if st.started {
 			tor.AllowDataUpload()
 			tor.AllowDataDownload()
-			go startTorrentDownload(tor)
+			go d.scheduleBTFileSelection(st)
 		}
 		if strings.EqualFold(saved.Meta["aria2.import"], "true") {
 			mode := strings.ToLower(strings.TrimSpace(effOpts["bt.resume.mode"]))
@@ -518,7 +532,7 @@ func torrentFiles(tor *torrentlib.Torrent) []task.File {
 	files := tor.Files()
 	if len(files) == 0 {
 		return []task.File{{
-			Index:           0,
+			Index:           1,
 			Path:            tor.Name(),
 			Length:          tor.Length(),
 			CompletedLength: tor.BytesCompleted(),
@@ -529,11 +543,11 @@ func torrentFiles(tor *torrentlib.Torrent) []task.File {
 	out := make([]task.File, 0, len(files))
 	for index, file := range files {
 		out = append(out, task.File{
-			Index:           index,
+			Index:           index + 1,
 			Path:            filepath.Clean(file.Path()),
 			Length:          file.Length(),
 			CompletedLength: file.BytesCompleted(),
-			Selected:        true,
+			Selected:        file.Priority() != torrentlib.PiecePriorityNone,
 		})
 	}
 	return out
@@ -566,16 +580,45 @@ func enrichMetaFromTorrent(meta map[string]string, tor *torrentlib.Torrent) map[
 	return out
 }
 
-func startTorrentDownload(tor *torrentlib.Torrent) {
+func (d *Driver) scheduleBTFileSelection(st *state) {
+	tor := st.torrent
+	run := func() {
+		d.mu.RLock()
+		sel := st.selectFile
+		d.mu.RUnlock()
+		if err := applySelectFileToTorrent(tor, sel); err != nil {
+			log.Printf("[bt] apply select-file: %v", err)
+		}
+	}
 	select {
 	case <-tor.GotInfo():
-		tor.DownloadAll()
+		run()
 	default:
 		go func() {
 			<-tor.GotInfo()
-			tor.DownloadAll()
+			run()
 		}()
 	}
+}
+
+func (d *Driver) setSelectFile(taskID, value string) error {
+	sel := strings.TrimSpace(value)
+	if _, _, err := parseAria2SelectFile(sel); err != nil {
+		return err
+	}
+	d.mu.Lock()
+	st := d.tasks[taskID]
+	if st == nil || st.removed {
+		d.mu.Unlock()
+		return manager.ErrTaskNotFound
+	}
+	st.selectFile = sel
+	tor := st.torrent
+	d.mu.Unlock()
+	if tor.Info() == nil {
+		return nil
+	}
+	return applySelectFileToTorrent(tor, sel)
 }
 
 func chooseName(values ...string) string {

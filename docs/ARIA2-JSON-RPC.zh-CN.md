@@ -76,7 +76,7 @@
 
 在 `addUri`、`addTorrent`、`changeOption`、`changeGlobalOption` 等中，选项为 **JSON 对象**，键为字符串；实现侧会将值 **`fmt` 转为字符串** 存入内部选项表。
 
-常见键（与配置/aria2 命名兼容，未列出的键可能被接受但部分尚未实现语义）包括：`dir`、`pause`、`max-concurrent-downloads`、`http-user-agent`、`http-referer`、`bt-tracker`、`bt-exclude-tracker` 等。具体以 `internal/app/daemon.go` 中 `buildGlobalOptions` 与驱动实现为准。
+常见键（与配置/aria2 命名兼容，未列出的键可能被接受但部分尚未实现语义）包括：`dir`、`pause`、`max-concurrent-downloads`、`http-user-agent`、`http-referer`、`bt-tracker`、`bt-exclude-tracker`、**`select-file`**（BT：逗号分隔的 1-based 索引与闭区间 `a-b`，与 aria2 一致；可在 `addUri`/`addTorrent` 与 `changeOption` 中使用；空或未设置表示下载全部文件）等。具体以 `internal/app/daemon.go` 中 `buildGlobalOptions` 与驱动实现为准。
 
 ---
 

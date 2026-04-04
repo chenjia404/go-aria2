@@ -76,7 +76,7 @@ Common `code` values:
 
 For `addUri`, `addTorrent`, `changeOption`, `changeGlobalOption`, etc., options are a **JSON object** with string keys; values are converted to **strings** internally (`fmt.Sprint`).
 
-Common keys (aria2-style; others may be accepted but not fully implemented) include: `dir`, `pause`, `max-concurrent-downloads`, `http-user-agent`, `http-referer`, `bt-tracker`, `bt-exclude-tracker`, etc. See `buildGlobalOptions` in `internal/app/daemon.go` and driver code for the source of truth.
+Common keys (aria2-style; others may be accepted but not fully implemented) include: `dir`, `pause`, `max-concurrent-downloads`, `http-user-agent`, `http-referer`, `bt-tracker`, `bt-exclude-tracker`, **`select-file`** (BT: comma-separated 1-based indices and inclusive ranges `a-b`, same as aria2; usable in `addUri`/`addTorrent` and `changeOption`; empty or omitted means download all files), etc. See `buildGlobalOptions` in `internal/app/daemon.go` and driver code for the source of truth.
 
 ---
 
