@@ -168,11 +168,11 @@ Below, **`params` are after stripping the optional `token:` prefix** (when secre
 
 | Index | Name | Type | Required | Description |
 |-------|------|------|----------|-------------|
-| `0` | torrent | string | yes | Base64-encoded `.torrent` payload |
-| `1` | uris | any | no | Same slot as official aria2 (web seeds); **currently ignored** |
-| `2` | options | object | no | Read **only if** `len(params) >= 3` |
+| `0` | torrent | string / object / array | yes | **Base64** (aria2 standard); or **Node `Buffer` JSON** `{"type":"Buffer","data":[0–255,...]}`; or **numeric byte array** (e.g. `Uint8Array` serialized). Must **not** be a plain task-options object |
+| `1` | uris / options | any | no | **Two args:** if **object**, it is `options`; if **array**, it is the URI list. **Three args:** second is the URI list; may be **`[]` or JSON `null`** (common with older aria2 clients). |
+| `2` | options | object | no | Third argument in `[torrent, uris, options]`; valid even when `uris` is `null` |
 
-**Note:** Passing two arguments `[torrent, options]` does **not** apply options; align with aria2’s three-parameter form so options are at index `2`.
+**Note:** Classic three-arg calls include `[torrent, null, options]` or `[torrent, [], options]`. Two-arg `[torrent, options]` is also accepted. For an **existing** task, use `aria2.changeOption(gid, options)`; do not pass an options map as the first argument to `addTorrent`.
 
 **`result`:** `string` — GID.
 
@@ -347,7 +347,7 @@ May be `[]` for protocols without peers.
 
 | Index | Name | Type | Required | Description |
 |-------|------|------|----------|-------------|
-| `0` | gid | string | yes | Task GID |
+| `0` | gid | string / number | yes | Task GID (string preferred; JSON integers accepted as decimal gid) |
 | `1` | options | object | yes | Non-empty option map |
 
 **`result`:** `string` — GID.

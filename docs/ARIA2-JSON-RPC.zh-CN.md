@@ -168,11 +168,11 @@
 
 | 索引 | 名称 | 类型 | 必填 | 说明 |
 |------|------|------|------|------|
-| `0` | torrent | string | 是 | `.torrent` 文件内容的 **Base64** |
-| `1` | uris | any | 否 | 与官方 aria2 位置对齐；**当前实现未使用** |
-| `2` | options | object | 否 | **仅当 `params` 长度 ≥ 3 时读取**。选项对象 |
+| `0` | torrent | string / object / array | 是 | **Base64 字符串**（与官方一致）；或 **Node `Buffer` 经 `JSON.stringify` 的对象** `{"type":"Buffer","data":[0–255,...]}`；或 **字节数字数组**（如 `Uint8Array` 序列化结果）。首项 **不能** 传普通任务 options 对象 |
+| `1` | uris / options | any | 否 | **两参数时**：若为 **对象** 则整段为 options；若为 **数组** 则为 URI 列表。**三参数时**：第二项为 URI 列表，可为 **`[]` 或 JSON `null`**（与老 aria2 / 客户端一致）。 |
+| `2` | options | object | 否 | **三参数** `[torrent, uris, options]` 时读取；`uris` 为 `null` 时仍有效 |
 
-**说明：** 若只传两个参数 `[torrent, options]`，实现 **不会** 把第二项当作 options；需与官方一致传三项时第三项才是 options。
+**说明：** 经典三参数为 `[torrent, null, options]` 或 `[torrent, [], options]`。另支持两参数 `[torrent, options]`。**不要**把 options 误放在首项；若要对已有任务改选项，应使用 `aria2.changeOption(gid, options)`。
 
 **响应 `result`：** `string`，GID。
 
@@ -347,7 +347,7 @@
 
 | 索引 | 名称 | 类型 | 必填 | 说明 |
 |------|------|------|------|------|
-| `0` | gid | string | 是 | 任务 GID |
+| `0` | gid | string / number | 是 | 任务 GID（推荐字符串；JSON 整数也会按十进制 GID 接受） |
 | `1` | options | object | 是 | 要设置的选项，不能为空对象 |
 
 **响应 `result`：** `string`，GID。

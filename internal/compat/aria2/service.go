@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -579,11 +580,21 @@ func stringParam(params []any, index int, name string) (string, error) {
 	if len(params) <= index {
 		return "", jsonrpc.NewError(jsonrpc.CodeInvalidParams, name+" is required")
 	}
-	value, ok := params[index].(string)
-	if !ok || value == "" {
+	switch v := params[index].(type) {
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return "", jsonrpc.NewError(jsonrpc.CodeInvalidParams, name+" must be a non-empty string")
+		}
+		return v, nil
+	case float64:
+		// JSON 数字在解码为 []any 时为 float64；部分客户端把 gid 当成数字传参
+		if v < 0 || v != float64(int64(v)) {
+			return "", jsonrpc.NewError(jsonrpc.CodeInvalidParams, name+" must be a string")
+		}
+		return strconv.FormatInt(int64(v), 10), nil
+	default:
 		return "", jsonrpc.NewError(jsonrpc.CodeInvalidParams, name+" must be a string")
 	}
-	return value, nil
 }
 
 func intParam(params []any, index int, name string) (int, error) {

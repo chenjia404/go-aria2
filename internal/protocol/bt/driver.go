@@ -187,15 +187,18 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 		Meta:     buildSourceMeta(input.Meta, result.Source),
 	}
 
-	d.mu.Lock()
-	d.tasks[item.ID] = &state{
+	st := &state{
 		torrent:    tor,
 		source:     result.Source,
 		paused:     false,
 		started:    false,
 		selectFile: strings.TrimSpace(input.Options["select-file"]),
 	}
+	d.mu.Lock()
+	d.tasks[item.ID] = st
 	d.mu.Unlock()
+	// 与 aria2 一致：元数据就绪后即按 select-file 标记文件选中状态；实际拉取仍由 DisallowDataDownload 门禁。
+	go d.scheduleBTFileSelection(st)
 
 	if strings.EqualFold(input.Meta["aria2.import"], "true") {
 		mode := strings.ToLower(strings.TrimSpace(input.Options["bt.resume.mode"]))
@@ -415,8 +418,8 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 		if st.started {
 			tor.AllowDataUpload()
 			tor.AllowDataDownload()
-			go d.scheduleBTFileSelection(st)
 		}
+		go d.scheduleBTFileSelection(st)
 		if strings.EqualFold(saved.Meta["aria2.import"], "true") {
 			mode := strings.ToLower(strings.TrimSpace(effOpts["bt.resume.mode"]))
 			if mode != "strict" {
