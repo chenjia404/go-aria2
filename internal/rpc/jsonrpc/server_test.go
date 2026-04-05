@@ -23,7 +23,7 @@ func TestHandleRequestHidesInternalErrorDetails(t *testing.T) {
 		},
 	}, Options{})
 
-	resp := srv.handleRequest(context.Background(), request{
+	resp := handleRequest(context.Background(), srv.handler, request{
 		JSONRPC: "2.0",
 		ID:      1,
 		Method:  "aria2.tellStatus",

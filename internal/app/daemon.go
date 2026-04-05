@@ -22,7 +22,6 @@ import (
 	"github.com/chenjia404/go-aria2/internal/protocol/httpdl"
 	"github.com/chenjia404/go-aria2/internal/rpc/httpapi"
 	rpcserver "github.com/chenjia404/go-aria2/internal/rpc/jsonrpc"
-	wserver "github.com/chenjia404/go-aria2/internal/rpc/ws"
 )
 
 // runDaemon 启动守护进程。
@@ -164,12 +163,20 @@ func runDaemon(args []string) error {
 			ReadTimeoutSeconds: 60,
 		}))
 	}
-	mux.Handle("/jsonrpc", rpcserver.NewServer(service, rpcserver.Options{
+	rpcOpts := rpcserver.Options{
 		MaxRequestSize: cfg.RPCMaxRequestSize,
 		AllowOriginAll: cfg.RPCAllowOriginAll,
-	}))
+	}
 	if cfg.EnableWebSocket {
-		mux.Handle("/ws", wserver.NewServer(mgr, cfg.RPCSecret, cfg.RPCAllowOriginAll))
+		rpcOpts.WebSocket = &rpcserver.WebSocketOptions{
+			Manager: mgr,
+			Secret:  cfg.RPCSecret,
+		}
+	}
+	rpcHandler := rpcserver.NewServer(service, rpcOpts)
+	mux.Handle("/jsonrpc", rpcHandler)
+	if cfg.EnableWebSocket {
+		mux.Handle("/ws", rpcHandler)
 	}
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -193,6 +200,10 @@ func runDaemon(args []string) error {
 		go func() {
 			rpcURL := rpcEndpointURL(cfg.RPCListenPort, cfg.RPCListenAll)
 			logger.Printf("json-rpc listening on %s (POST: %s)", server.Addr, rpcURL)
+			if cfg.EnableWebSocket {
+				wsURL := rpcWebSocketExampleURL(cfg.RPCListenPort, cfg.RPCListenAll)
+				logger.Printf("JSON-RPC over WebSocket（aria2 兼容）: %s；/ws 为同服务别名", wsURL)
+			}
 			if cfg.ED2KEnable && ed2kDriver != nil {
 				logger.Printf("ED2K REST API (goed2kd-compatible paths): http://%s/api/v1/system/health — transfers use {hash}, auth: rpc-secret (Bearer / X-Auth-Token)", server.Addr)
 			}
@@ -357,6 +368,17 @@ func rpcEndpointURL(port int, listenAll bool) string {
 	u := "http://127.0.0.1:" + strconv.Itoa(port) + "/jsonrpc"
 	if listenAll {
 		return u + "（监听所有网卡；外机访问请用本机局域网 IP 替代 127.0.0.1）"
+	}
+	return u
+}
+
+func rpcWebSocketExampleURL(port int, listenAll bool) string {
+	if port <= 0 {
+		port = 6800
+	}
+	u := "ws://127.0.0.1:" + strconv.Itoa(port) + "/jsonrpc"
+	if listenAll {
+		return u + "（外机同上，替换主机名）"
 	}
 	return u
 }

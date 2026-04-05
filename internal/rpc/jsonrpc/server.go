@@ -3,9 +3,9 @@ package jsonrpc
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
+	"strings"
 )
 
 const (
@@ -57,6 +57,8 @@ type response struct {
 type Options struct {
 	MaxRequestSize int64
 	AllowOriginAll bool
+	// WebSocket 非 nil 时，GET + Upgrade 走 aria2 兼容的 JSON-RPC WebSocket（与 POST /jsonrpc 相同语义）。
+	WebSocket *WebSocketOptions
 }
 
 // Server 是 HTTP JSON-RPC 2.0 服务。
@@ -75,13 +77,22 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.options.AllowOriginAll {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		methods := "POST, OPTIONS"
+		if s.options.WebSocket != nil {
+			methods = "POST, GET, OPTIONS"
+		}
+		w.Header().Set("Access-Control-Allow-Methods", methods)
 	}
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	if s.options.WebSocket != nil && WebSocketUpgrade(r) && r.Method == http.MethodGet {
+		s.serveWebSocket(w, r)
+		return
+	}
 	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", strings.Join([]string{http.MethodPost, http.MethodGet}, ", "))
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
@@ -97,60 +108,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var batch []request
-	if err := json.Unmarshal(body, &batch); err == nil {
-		s.handleBatch(w, r.Context(), batch)
+	out, ok := ProcessBody(r.Context(), s.handler, body)
+	if !ok {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-
-	var req request
-	if err := json.Unmarshal(body, &req); err != nil {
-		s.writeSingle(w, response{JSONRPC: "2.0", Error: NewError(CodeParseError, "parse error")})
-		return
-	}
-	s.writeSingle(w, s.handleRequest(r.Context(), req))
+	s.writeBytes(w, out)
 }
 
-func (s *Server) handleBatch(w http.ResponseWriter, ctx context.Context, batch []request) {
-	if len(batch) == 0 {
-		s.writeSingle(w, response{JSONRPC: "2.0", Error: NewError(CodeInvalidRequest, "invalid request")})
-		return
-	}
-
-	out := make([]response, 0, len(batch))
-	for _, req := range batch {
-		out = append(out, s.handleRequest(ctx, req))
-	}
-
+func (s *Server) writeBytes(w http.ResponseWriter, data []byte) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(out)
-}
-
-func (s *Server) handleRequest(ctx context.Context, req request) response {
-	if req.JSONRPC != "" && req.JSONRPC != "2.0" {
-		return response{JSONRPC: "2.0", ID: req.ID, Error: NewError(CodeInvalidRequest, "invalid request")}
-	}
-	if req.Method == "" {
-		return response{JSONRPC: "2.0", ID: req.ID, Error: NewError(CodeInvalidRequest, "method is required")}
-	}
-
-	var params []any
-	if len(req.Params) > 0 {
-		if err := json.Unmarshal(req.Params, &params); err != nil {
-			return response{JSONRPC: "2.0", ID: req.ID, Error: NewError(CodeInvalidParams, "params must be an array")}
-		}
-	}
-
-	result, err := s.handler.Invoke(ctx, req.Method, params)
-	if err != nil {
-		var rpcErr *RPCError
-		if errors.As(err, &rpcErr) {
-			return response{JSONRPC: "2.0", ID: req.ID, Error: rpcErr}
-		}
-		return response{JSONRPC: "2.0", ID: req.ID, Error: NewError(CodeInternalError, internalErrorMessage)}
-	}
-
-	return response{JSONRPC: "2.0", ID: req.ID, Result: result}
+	_, _ = w.Write(data)
 }
 
 func (s *Server) writeSingle(w http.ResponseWriter, resp response) {

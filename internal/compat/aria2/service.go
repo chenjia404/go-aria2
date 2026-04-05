@@ -51,6 +51,7 @@ func NewService(mgr *manager.Manager, rpcSecret string) *Service {
 		"aria2.getVersion",
 		"aria2.getSessionInfo",
 		"system.listMethods",
+		"system.listNotifications",
 		"system.multicall",
 	}
 
@@ -136,6 +137,15 @@ func (s *Service) invokeWithoutAuth(ctx context.Context, method string, params [
 		return s.getSessionInfo(), nil
 	case "system.listMethods":
 		return append([]string(nil), s.methods...), nil
+	case "system.listNotifications":
+		return []string{
+			"aria2.onDownloadStart",
+			"aria2.onDownloadPause",
+			"aria2.onDownloadStop",
+			"aria2.onDownloadComplete",
+			"aria2.onDownloadError",
+			"aria2.onBtDownloadComplete",
+		}, nil
 	case "system.multicall":
 		return s.multicall(ctx, params)
 	default:

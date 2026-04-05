@@ -6,6 +6,7 @@ require (
 	github.com/RoaringBitmap/roaring v1.9.4
 	github.com/anacrolix/torrent v1.61.0
 	github.com/go-chi/chi/v5 v5.2.3
+	github.com/gorilla/websocket v1.5.3
 	github.com/monkeyWie/goed2k v0.0.0-20260403055011-a8f73dee6faa
 )
 
@@ -42,7 +43,6 @@ require (
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.3 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
