@@ -655,7 +655,7 @@ func (m *Manager) SaveSession(ctx context.Context) error {
 	if m.store == nil {
 		return nil
 	}
-	return m.store.Save(ctx, m.snapshotTasks())
+	return m.store.Save(ctx, m.snapshotTasksForPersist(ctx))
 }
 
 // Close 在退出前持久化一�?session�?
@@ -975,6 +975,33 @@ func (m *Manager) snapshotTasks() []*task.Task {
 	snapshot := make([]*task.Task, 0, len(ids))
 	for _, taskID := range ids {
 		snapshot = append(snapshot, m.tasks[taskID].Clone())
+	}
+	return snapshot
+}
+
+func (m *Manager) snapshotTasksForPersist(ctx context.Context) []*task.Task {
+	m.mu.RLock()
+	ids := make([]string, 0, len(m.tasks))
+	for taskID := range m.tasks {
+		ids = append(ids, taskID)
+	}
+	m.mu.RUnlock()
+	sort.Strings(ids)
+
+	snapshot := make([]*task.Task, 0, len(ids))
+	for _, taskID := range ids {
+		item, err := m.tellStatusByID(ctx, taskID)
+		if err == nil && item != nil {
+			snapshot = append(snapshot, item.Clone())
+			continue
+		}
+
+		m.mu.RLock()
+		current := m.tasks[taskID]
+		m.mu.RUnlock()
+		if current != nil {
+			snapshot = append(snapshot, current.Clone())
+		}
 	}
 	return snapshot
 }

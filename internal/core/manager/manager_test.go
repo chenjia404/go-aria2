@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/chenjia404/go-aria2/internal/core/session"
 	"github.com/chenjia404/go-aria2/internal/core/task"
 )
 
@@ -14,6 +15,105 @@ type stubDriver struct {
 	added []*task.AddTaskInput
 	tasks map[string]*task.Task
 }
+
+type recordingStore struct {
+	saved []*task.Task
+}
+
+func (s *recordingStore) Load(ctx context.Context) ([]*task.Task, error) {
+	_ = ctx
+	if s == nil || len(s.saved) == 0 {
+		return nil, nil
+	}
+	out := make([]*task.Task, 0, len(s.saved))
+	for _, item := range s.saved {
+		out = append(out, item.Clone())
+	}
+	return out, nil
+}
+
+func (s *recordingStore) Save(ctx context.Context, tasks []*task.Task) error {
+	_ = ctx
+	s.saved = make([]*task.Task, 0, len(tasks))
+	for _, item := range tasks {
+		s.saved = append(s.saved, item.Clone())
+	}
+	return nil
+}
+
+type refreshingSessionDriver struct {
+	tasks map[string]*task.Task
+}
+
+func newRefreshingSessionDriver() *refreshingSessionDriver {
+	return &refreshingSessionDriver{tasks: make(map[string]*task.Task)}
+}
+
+func (d *refreshingSessionDriver) Name() string { return "bt" }
+
+func (d *refreshingSessionDriver) CanHandle(input task.AddTaskInput) bool { return true }
+
+func (d *refreshingSessionDriver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, error) {
+	_ = ctx
+	item := &task.Task{
+		ID:       "bt-task",
+		GID:      "bt-gid",
+		Protocol: task.ProtocolBT,
+		Name:     "sample.torrent",
+		Status:   task.StatusPaused,
+		SaveDir:  input.SaveDir,
+	}
+	d.tasks[item.ID] = item.Clone()
+	return item.Clone(), nil
+}
+
+func (d *refreshingSessionDriver) Start(ctx context.Context, taskID string) error {
+	_ = ctx
+	if item := d.tasks[taskID]; item != nil {
+		item.Status = task.StatusActive
+	}
+	return nil
+}
+
+func (d *refreshingSessionDriver) Pause(ctx context.Context, taskID string, force bool) error {
+	_ = ctx
+	_ = force
+	if item := d.tasks[taskID]; item != nil {
+		item.Status = task.StatusPaused
+	}
+	return nil
+}
+
+func (d *refreshingSessionDriver) Remove(ctx context.Context, taskID string, force bool) error {
+	_ = ctx
+	_ = force
+	delete(d.tasks, taskID)
+	return nil
+}
+
+func (d *refreshingSessionDriver) TellStatus(ctx context.Context, taskID string) (*task.Task, error) {
+	_ = ctx
+	item := d.tasks[taskID]
+	if item == nil {
+		return nil, ErrTaskNotFound
+	}
+	return item.Clone(), nil
+}
+
+func (d *refreshingSessionDriver) GetFiles(ctx context.Context, taskID string) ([]task.File, error) {
+	_ = ctx
+	_ = taskID
+	return nil, nil
+}
+
+func (d *refreshingSessionDriver) ChangeOption(ctx context.Context, taskID string, opts map[string]string) error {
+	_ = ctx
+	_ = taskID
+	_ = opts
+	return nil
+}
+
+var _ session.Store = (*recordingStore)(nil)
 
 func newStubDriver() *stubDriver {
 	return &stubDriver{tasks: make(map[string]*task.Task)}
@@ -253,5 +353,60 @@ func TestRemoveConcurrentSameGID(t *testing.T) {
 	}
 	if mgr.GetByGID(gid) != nil {
 		t.Fatal("task should be removed")
+	}
+}
+
+func TestSaveSessionRefreshesDriverStateBeforePersist(t *testing.T) {
+	t.Parallel()
+
+	store := &recordingStore{}
+	driver := newRefreshingSessionDriver()
+	mgr := New(Options{
+		DefaultDir: "./downloads",
+		Store:      store,
+	})
+	mgr.RegisterDriver(driver)
+
+	created, err := mgr.Add(context.Background(), task.AddTaskInput{
+		URI:     "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",
+		SaveDir: "./downloads",
+	})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	driver.tasks[created.ID] = &task.Task{
+		ID:              created.ID,
+		GID:             created.GID,
+		Protocol:        task.ProtocolBT,
+		Name:            created.Name,
+		Status:          task.StatusPaused,
+		SaveDir:         created.SaveDir,
+		CompletedLength: 4096,
+		VerifiedLength:  4096,
+		Files: []task.File{{
+			Index:           1,
+			Path:            "./downloads/sample.bin",
+			Length:          8192,
+			CompletedLength: 4096,
+			Selected:        true,
+		}},
+	}
+
+	if err := mgr.SaveSession(context.Background()); err != nil {
+		t.Fatalf("SaveSession: %v", err)
+	}
+	if len(store.saved) != 1 {
+		t.Fatalf("expected one persisted task, got %d", len(store.saved))
+	}
+	saved := store.saved[0]
+	if saved.CompletedLength != 4096 || saved.VerifiedLength != 4096 {
+		t.Fatalf("persisted stale progress: %+v", saved)
+	}
+	if len(saved.Files) != 1 || saved.Files[0].CompletedLength != 4096 {
+		t.Fatalf("persisted stale file progress: %+v", saved.Files)
+	}
+	if saved.Status != task.StatusPaused {
+		t.Fatalf("unexpected persisted status: %+v", saved)
 	}
 }

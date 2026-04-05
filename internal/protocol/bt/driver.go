@@ -34,9 +34,12 @@ type Options struct {
 type state struct {
 	torrent        *torrentlib.Torrent
 	source         addSource
+	saveDir        string
 	started        bool
 	paused         bool
 	removed        bool
+	completed      int64
+	verified       int64
 	lastReadBytes  int64
 	lastWriteBytes int64
 	lastSampleAt   time.Time
@@ -46,11 +49,12 @@ type state struct {
 
 // Driver 使用 anacrolix/torrent 作为 BT 协议实现�?
 type Driver struct {
-	mu        sync.RWMutex
-	client    *torrentlib.Client
-	tasks     map[string]*state
-	closeOnce sync.Once
-	closeErr  error
+	mu              sync.RWMutex
+	client          *torrentlib.Client
+	tasks           map[string]*state
+	rebuildProgress func(*task.Task, *torrentlib.Torrent) error
+	closeOnce       sync.Once
+	closeErr        error
 }
 
 func buildTorrentConfig(opts Options, listenPort int) *torrentlib.ClientConfig {
@@ -104,8 +108,9 @@ func New(opts Options) (*Driver, error) {
 		return nil, err
 	}
 	return &Driver{
-		client: client,
-		tasks:  make(map[string]*state),
+		client:          client,
+		tasks:           make(map[string]*state),
+		rebuildProgress: RebuildBTProgress,
 	}, nil
 }
 
@@ -190,6 +195,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 	st := &state{
 		torrent:    tor,
 		source:     result.Source,
+		saveDir:    input.SaveDir,
 		paused:     false,
 		started:    false,
 		selectFile: strings.TrimSpace(input.Options["select-file"]),
@@ -407,18 +413,22 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 			tor.SetDisplayName(saved.Name)
 		}
 
+		resumeAfterRestore := saved.Status == task.StatusActive
 		st := &state{
 			torrent:    tor,
 			source:     result.Source,
-			started:    saved.Status == task.StatusActive,
+			saveDir:    saved.SaveDir,
+			started:    false,
 			paused:     saved.Status == task.StatusPaused,
+			completed:  saved.CompletedLength,
+			verified:   saved.VerifiedLength,
 			selectFile: strings.TrimSpace(effOpts["select-file"]),
 		}
 
-		if st.started {
-			tor.AllowDataUpload()
-			tor.AllowDataDownload()
-		}
+		d.mu.Lock()
+		d.tasks[saved.ID] = st
+		d.mu.Unlock()
+
 		go d.scheduleBTFileSelection(st)
 		if strings.EqualFold(saved.Meta["aria2.import"], "true") {
 			mode := strings.ToLower(strings.TrimSpace(effOpts["bt.resume.mode"]))
@@ -427,13 +437,76 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 			}
 			VerifyInBackground(saved)
 			go scheduleImportedProgress(saved, tor, mode == "strict")
+		} else if shouldRestoreBTProgress(saved, result.Source) {
+			go d.restoreProgressAfterLoad(saved.Clone(), st, resumeAfterRestore)
+		} else if resumeAfterRestore {
+			st.started = true
+			tor.AllowDataUpload()
+			tor.AllowDataDownload()
 		}
-
-		d.mu.Lock()
-		d.tasks[saved.ID] = st
-		d.mu.Unlock()
 	}
 	return nil
+}
+
+func shouldRestoreBTProgress(saved *task.Task, source addSource) bool {
+	if saved == nil {
+		return false
+	}
+	if strings.TrimSpace(saved.SaveDir) == "" {
+		return false
+	}
+	switch source.Kind {
+	case "torrent-bytes", "torrent-url":
+		return true
+	default:
+		return false
+	}
+}
+
+func (d *Driver) restoreProgressAfterLoad(saved *task.Task, st *state, resume bool) {
+	if saved == nil || st == nil || st.torrent == nil {
+		return
+	}
+	if st.torrent.Info() == nil {
+		<-st.torrent.GotInfo()
+	}
+	rebuild := d.rebuildProgress
+	if rebuild == nil {
+		rebuild = RebuildBTProgress
+	}
+	if err := rebuild(saved, st.torrent); err != nil {
+		log.Printf("[WARN] rebuild BT progress failed: %v", err)
+	}
+
+	d.mu.Lock()
+	for _, current := range d.tasks {
+		if current != st {
+			continue
+		}
+		current.completed = saved.CompletedLength
+		current.verified = saved.VerifiedLength
+		break
+	}
+	d.mu.Unlock()
+
+	if !resume {
+		return
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, current := range d.tasks {
+		if current != st {
+			continue
+		}
+		if current.removed || current.paused {
+			return
+		}
+		current.started = true
+		current.torrent.AllowDataUpload()
+		current.torrent.AllowDataDownload()
+		return
+	}
 }
 
 func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, error) {
@@ -449,7 +522,7 @@ func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, 
 		ID:       taskID,
 		Protocol: task.ProtocolBT,
 		Name:     state.torrent.Name(),
-		SaveDir:  "",
+		SaveDir:  state.saveDir,
 		Meta:     buildSourceMeta(nil, state.source),
 	}
 
@@ -475,6 +548,12 @@ func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, 
 
 	item.CompletedLength = state.torrent.BytesCompleted()
 	item.VerifiedLength = item.CompletedLength
+	if state.completed > item.CompletedLength {
+		item.CompletedLength = state.completed
+	}
+	if state.verified > item.VerifiedLength {
+		item.VerifiedLength = state.verified
+	}
 	item.Seeder = state.torrent.Seeding()
 
 	stats := state.torrent.Stats()
@@ -515,6 +594,7 @@ func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, 
 	state.lastReadBytes = readBytes
 	state.lastWriteBytes = writeBytes
 	item.UploadedLength = writeBytes
+	applyCompletedToFiles(item.Files, item.CompletedLength)
 
 	switch {
 	case forcedStatus != "":
@@ -529,6 +609,23 @@ func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, 
 		item.Status = task.StatusActive
 	}
 	return item, nil
+}
+
+func applyCompletedToFiles(files []task.File, total int64) {
+	remaining := total
+	for i := range files {
+		files[i].CompletedLength = 0
+		if remaining <= 0 {
+			continue
+		}
+		if remaining >= files[i].Length {
+			files[i].CompletedLength = files[i].Length
+			remaining -= files[i].Length
+			continue
+		}
+		files[i].CompletedLength = remaining
+		remaining = 0
+	}
 }
 
 func torrentFiles(tor *torrentlib.Torrent) []task.File {

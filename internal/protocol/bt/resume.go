@@ -66,6 +66,13 @@ func RebuildBTProgress(item *task.Task, tor *torrentlib.Torrent) error {
 		log.Printf("[WARN] open piece completion store failed: %v", err)
 		completion = storage.NewMapPieceCompletion()
 	}
+	if completion != nil {
+		defer func() {
+			if err := completion.Close(); err != nil {
+				log.Printf("[WARN] close piece completion store failed: %v", err)
+			}
+		}()
+	}
 
 	bitfield := make([]byte, (totalPieces+7)/8)
 	var (
@@ -76,7 +83,7 @@ func RebuildBTProgress(item *task.Task, tor *torrentlib.Torrent) error {
 
 	files := info.UpvertedFiles()
 	for pieceIndex := 0; pieceIndex < totalPieces; pieceIndex++ {
-		complete, err := verifyPiece(info, taskDir(item), pieceIndex, files)
+		complete, err := verifyPiece(item, info, taskDir(item), pieceIndex, files)
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}
@@ -124,7 +131,7 @@ func displayTaskName(item *task.Task) string {
 	return item.GID
 }
 
-func verifyPiece(info *metainfo.Info, saveDir string, pieceIndex int, files []metainfo.FileInfo) (bool, error) {
+func verifyPiece(item *task.Task, info *metainfo.Info, saveDir string, pieceIndex int, files []metainfo.FileInfo) (bool, error) {
 	expectedHash := info.Piece(pieceIndex).V1Hash()
 	if !expectedHash.Ok {
 		return false, nil
@@ -142,7 +149,7 @@ func verifyPiece(info *metainfo.Info, saveDir string, pieceIndex int, files []me
 		pieceEnd = info.TotalLength()
 	}
 
-	for _, file := range files {
+	for fileIndex, file := range files {
 		fileStart := file.TorrentOffset
 		fileEnd := fileStart + file.Length
 		if fileEnd <= pieceStart || fileStart >= pieceEnd {
@@ -153,7 +160,7 @@ func verifyPiece(info *metainfo.Info, saveDir string, pieceIndex int, files []me
 		if overlapEnd <= overlapStart {
 			continue
 		}
-		path := filePathFor(saveDir, info, file)
+		path := filePathForTask(item, saveDir, info, file, fileIndex)
 		data, err := readRange(path, overlapStart-fileStart, overlapEnd-overlapStart)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -177,11 +184,29 @@ func verifyPiece(info *metainfo.Info, saveDir string, pieceIndex int, files []me
 
 func filePathFor(saveDir string, info *metainfo.Info, file metainfo.FileInfo) string {
 	parts := []string{saveDir}
-	if info != nil && info.BestName() != metainfo.NoName {
+	if info != nil && info.IsDir() && info.BestName() != metainfo.NoName {
 		parts = append(parts, info.BestName())
 	}
-	parts = append(parts, file.BestPath()...)
+	if info != nil && !info.IsDir() {
+		if info.BestName() != metainfo.NoName {
+			parts = append(parts, info.BestName())
+		}
+	} else {
+		parts = append(parts, file.BestPath()...)
+	}
 	return filepath.Join(parts...)
+}
+
+func filePathForTask(item *task.Task, saveDir string, info *metainfo.Info, file metainfo.FileInfo, fileIndex int) string {
+	if item != nil && fileIndex >= 0 && fileIndex < len(item.Files) {
+		if candidate := strings.TrimSpace(item.Files[fileIndex].Path); candidate != "" {
+			if filepath.IsAbs(candidate) {
+				return candidate
+			}
+			return filepath.Join(saveDir, candidate)
+		}
+	}
+	return filePathFor(saveDir, info, file)
 }
 
 func readRange(path string, offset, length int64) ([]byte, error) {
