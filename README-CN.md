@@ -331,6 +331,9 @@ ed2k-upload-slots=3
 - 隐藏内部选项（如 `startup-idle-time`）不会通过 `getOption` / `getGlobalOption` 返回
 - `addUri` 要求合法 URI scheme；队列 `position` 必须为非负整数
 - `changeUri` 要求 `fileIndex >= 1`
+- `tellStatus` 对批量下载（如 `addMetalink`）返回 `followedBy` / `following` / `belongsTo`
+- `addTorrent` 在 `rpc-save-upload-metadata=true` 时将 torrent 保存为 `dir/<infohash>.torrent`
+- `aria2.forcePauseAll` 会强制暂停所有活动与等待中的任务
 
 与官方 aria2 daemon 的 RPC 对比集成测试（需本机已安装 `aria2c`）：
 

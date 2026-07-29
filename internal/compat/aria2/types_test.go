@@ -7,6 +7,32 @@ import (
 	"github.com/chenjia404/go-aria2/internal/core/task"
 )
 
+func TestToStatusResponseRelatedDownloads(t *testing.T) {
+	t.Parallel()
+
+	item := &task.Task{
+		GID:            "gid-leader",
+		Status:         task.StatusComplete,
+		FollowingGID:   "gid-parent",
+		BelongsToGID:   "gid-parent",
+		FollowedByGIDs: []string{"gid-child-1", "gid-child-2"},
+		Files:          []task.File{{Index: 1, Path: "a.bin"}},
+	}
+	resp := toStatusResponse(item, nil)
+	followedBy, ok := resp["followedBy"].([]string)
+	if !ok || len(followedBy) != 2 {
+		t.Fatalf("followedBy: %#v", resp["followedBy"])
+	}
+	if resp["following"] != "gid-parent" || resp["belongsTo"] != "gid-parent" {
+		t.Fatalf("unexpected links: %#v", resp)
+	}
+
+	filtered := toStatusResponse(item, []string{"gid"})
+	if len(filtered) != 1 || filtered["gid"] != "gid-leader" {
+		t.Fatalf("keys filter should only return gid: %#v", filtered)
+	}
+}
+
 func TestToBitTorrentResponseAnnounceListNested(t *testing.T) {
 	item := &task.Task{
 		Protocol: task.ProtocolBT,

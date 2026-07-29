@@ -1169,6 +1169,15 @@ func (m *Manager) storeTask(updated *task.Task, driver Driver) *task.Task {
 		if len(cloned.Meta) == 0 {
 			cloned.Meta = cloneOptions(existing.Meta)
 		}
+		if cloned.FollowingGID == "" {
+			cloned.FollowingGID = existing.FollowingGID
+		}
+		if cloned.BelongsToGID == "" {
+			cloned.BelongsToGID = existing.BelongsToGID
+		}
+		if len(cloned.FollowedByGIDs) == 0 && len(existing.FollowedByGIDs) > 0 {
+			cloned.FollowedByGIDs = append([]string(nil), existing.FollowedByGIDs...)
+		}
 		if existing.Status == cloned.Status &&
 			existing.CompletedLength == cloned.CompletedLength &&
 			existing.TotalLength == cloned.TotalLength &&

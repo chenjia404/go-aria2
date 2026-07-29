@@ -215,6 +215,49 @@ func TestCompareAria2_ChangePosition(t *testing.T) {
 	compareIntResult(t, ctx, aria2, goAria, "aria2.changePosition", aria2GIDs[2], 0, "POS_SET", goGIDs[2])
 }
 
+func TestCompareAria2_PauseAllAndForcePauseAll(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-pauseall"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/pauseall.bin"}, map[string]any{}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.pauseAll"), d.name+" pauseAll"); got != "OK" {
+			t.Fatalf("%s pauseAll returned %q", d.name, got)
+		}
+		status := decodeJSON[map[string]any](t, mustCall(t, ctx, d, "aria2.tellStatus", gid), d.name+" paused")
+		if status["status"] != "paused" {
+			t.Fatalf("%s expected paused after pauseAll, got %v", d.name, status["status"])
+		}
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.forcePauseAll"), d.name+" forcePauseAll"); got != "OK" {
+			t.Fatalf("%s forcePauseAll returned %q", d.name, got)
+		}
+	}
+}
+
+func TestCompareAria2_TellWaiting(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-waiting"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	for i := range 3 {
+		params := []any{[]any{fmt.Sprintf("http://example.com/wait-%d.bin", i)}, map[string]any{"pause": "true"}}
+		mustCallSlice(t, ctx, aria2, "aria2.addUri", params)
+		mustCallSlice(t, ctx, goAria, "aria2.addUri", params)
+	}
+
+	aria2Waiting := decodeJSON[[]map[string]any](t, mustCall(t, ctx, aria2, "aria2.tellWaiting", 0, 10), "aria2 waiting")
+	goWaiting := decodeJSON[[]map[string]any](t, mustCall(t, ctx, goAria, "aria2.tellWaiting", 0, 10), "go waiting")
+	if len(aria2Waiting) < 3 || len(goWaiting) < 3 {
+		t.Fatalf("expected at least 3 waiting: aria2=%d go=%d", len(aria2Waiting), len(goWaiting))
+	}
+}
+
 func rawCall(t *testing.T, ctx context.Context, aria2, goAria *daemonHandle, method string, params []any) (json.RawMessage, json.RawMessage) {
 	t.Helper()
 	a, err := aria2.call(ctx, method, params)

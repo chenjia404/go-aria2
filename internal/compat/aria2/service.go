@@ -10,6 +10,8 @@ import (
 
 	"github.com/chenjia404/go-aria2/internal/core/manager"
 	"github.com/chenjia404/go-aria2/internal/core/task"
+	"github.com/chenjia404/go-aria2/internal/protocol/bt"
+	"github.com/chenjia404/go-aria2/internal/protocol/common"
 	"github.com/chenjia404/go-aria2/internal/rpc/jsonrpc"
 )
 
@@ -276,6 +278,15 @@ func (s *Service) addTorrent(ctx context.Context, params []any) (any, error) {
 	})
 	if err != nil {
 		return nil, err
+	}
+	if common.OptionBool(options, "rpc-save-upload-metadata", false) {
+		saveDir := created.SaveDir
+		if saveDir == "" {
+			saveDir = options["dir"]
+		}
+		if saveDir != "" {
+			_ = bt.SaveUploadedTorrentMetadata(saveDir, payload)
+		}
 	}
 	return created.GID, nil
 }

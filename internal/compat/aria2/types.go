@@ -41,6 +41,11 @@ func toStatusResponse(item *task.Task, keys []string) map[string]any {
 	if bittorrent := toBitTorrentResponse(item); bittorrent != nil {
 		all["bittorrent"] = bittorrent
 	}
+	if rel := toRelatedDownloadResponse(item); rel != nil {
+		for key, value := range rel {
+			all[key] = value
+		}
+	}
 
 	if len(keys) == 0 {
 		return all
@@ -235,6 +240,27 @@ func toBitTorrentResponse(item *task.Task) map[string]any {
 		response["creationDate"] = creationDate
 	}
 	return response
+}
+
+// toRelatedDownloadResponse 映射 aria2 tellStatus 的 followedBy / following / belongsTo 字段。
+func toRelatedDownloadResponse(item *task.Task) map[string]any {
+	if item == nil {
+		return nil
+	}
+	out := map[string]any{}
+	if len(item.FollowedByGIDs) > 0 {
+		out["followedBy"] = append([]string(nil), item.FollowedByGIDs...)
+	}
+	if item.FollowingGID != "" {
+		out["following"] = item.FollowingGID
+	}
+	if item.BelongsToGID != "" {
+		out["belongsTo"] = item.BelongsToGID
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func splitMetaLines(value string) []string {

@@ -331,6 +331,9 @@ Option validation aligned with aria2:
 - Hidden internal options (e.g. `startup-idle-time`) are not returned by `getOption` / `getGlobalOption`
 - `addUri` requires a valid URI scheme; queue `position` must be non-negative
 - `changeUri` requires `fileIndex >= 1`
+- `tellStatus` includes `followedBy` / `following` / `belongsTo` for batch downloads (e.g. `addMetalink`)
+- `rpc-save-upload-metadata=true` on `addTorrent` saves `<infohash>.torrent` under `dir`
+- `aria2.forcePauseAll` forcibly pauses all active and waiting downloads
 
 Daemon-side comparison tests (requires `aria2c` on PATH):
 
