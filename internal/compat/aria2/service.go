@@ -35,6 +35,7 @@ func NewService(mgr *manager.Manager, rpcSecret string) *Service {
 		"aria2.pause",
 		"aria2.forcePause",
 		"aria2.pauseAll",
+		"aria2.forcePauseAll",
 		"aria2.unpauseAll",
 		"aria2.unpause",
 		"aria2.removeDownloadResult",
@@ -49,6 +50,8 @@ func NewService(mgr *manager.Manager, rpcSecret string) *Service {
 		"aria2.getServers",
 		"aria2.getOption",
 		"aria2.changeOption",
+		"aria2.changePosition",
+		"aria2.changeUri",
 		"aria2.getUris",
 		"aria2.getGlobalOption",
 		"aria2.changeGlobalOption",
@@ -123,6 +126,8 @@ func (s *Service) invokeWithoutAuth(ctx context.Context, method string, params [
 		return s.pause(ctx, params, true)
 	case "aria2.pauseAll":
 		return s.pauseAll(ctx)
+	case "aria2.forcePauseAll":
+		return s.forcePauseAll(ctx)
 	case "aria2.unpause":
 		return s.unpause(ctx, params)
 	case "aria2.unpauseAll":
@@ -153,6 +158,10 @@ func (s *Service) invokeWithoutAuth(ctx context.Context, method string, params [
 		return s.getOption(ctx, params)
 	case "aria2.changeOption":
 		return s.changeOption(ctx, params)
+	case "aria2.changePosition":
+		return s.changePosition(ctx, params)
+	case "aria2.changeUri":
+		return s.changeUri(ctx, params)
 	case "aria2.getGlobalOption":
 		return s.getGlobalOption(), nil
 	case "aria2.changeGlobalOption":
@@ -280,6 +289,13 @@ func (s *Service) unpause(ctx context.Context, params []any) (any, error) {
 
 func (s *Service) pauseAll(ctx context.Context) (any, error) {
 	if err := s.manager.PauseAll(ctx); err != nil {
+		return nil, err
+	}
+	return "OK", nil
+}
+
+func (s *Service) forcePauseAll(ctx context.Context) (any, error) {
+	if err := s.manager.ForcePauseAll(ctx); err != nil {
 		return nil, err
 	}
 	return "OK", nil
@@ -699,4 +715,56 @@ func intParam(params []any, index int, name string) (int, error) {
 	default:
 		return 0, jsonrpc.NewError(jsonrpc.CodeInvalidParams, name+" must be an integer")
 	}
+}
+
+func (s *Service) changePosition(ctx context.Context, params []any) (any, error) {
+	gid, err := stringParam(params, 0, "gid")
+	if err != nil {
+		return nil, err
+	}
+	pos, err := intParam(params, 1, "pos")
+	if err != nil {
+		return nil, err
+	}
+	how := "POS_SET"
+	if len(params) > 2 {
+		if value, ok := params[2].(string); ok && strings.TrimSpace(value) != "" {
+			how = value
+		}
+	}
+	newPos, err := s.manager.ChangePosition(ctx, gid, pos, how)
+	if err != nil {
+		return nil, err
+	}
+	return newPos, nil
+}
+
+func (s *Service) changeUri(ctx context.Context, params []any) (any, error) {
+	gid, err := stringParam(params, 0, "gid")
+	if err != nil {
+		return nil, err
+	}
+	fileIndex, err := intParam(params, 1, "fileIndex")
+	if err != nil {
+		return nil, err
+	}
+	delURIs := []string{}
+	if len(params) > 2 {
+		delURIs = parseStringList(params[2])
+	}
+	addURIs := []string{}
+	if len(params) > 3 {
+		addURIs = parseStringList(params[3])
+	}
+	position := 0
+	if len(params) > 4 {
+		position, err = intParam(params, 4, "position")
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := s.manager.ChangeURI(ctx, gid, fileIndex, delURIs, addURIs, position); err != nil {
+		return nil, err
+	}
+	return []any{}, nil
 }

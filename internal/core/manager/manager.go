@@ -290,9 +290,13 @@ func (m *Manager) Pause(ctx context.Context, gid string, force bool) (*task.Task
 
 // PauseAll 暂停所有可暂停的任务�?
 func (m *Manager) PauseAll(ctx context.Context) error {
+	return m.pauseAll(ctx, false)
+}
+
+func (m *Manager) pauseAll(ctx context.Context, force bool) error {
 	taskIDs := m.snapshotTaskIDsByStatus(task.StatusActive, task.StatusWaiting)
 	for _, taskID := range taskIDs {
-		updated, err := m.pauseTaskByID(ctx, taskID, false)
+		updated, err := m.pauseTaskByID(ctx, taskID, force)
 		if err != nil && !errors.Is(err, ErrTaskNotFound) {
 			return err
 		}
