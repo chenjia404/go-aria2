@@ -13,6 +13,11 @@ import (
 
 // 与真实 aria2 daemon 并行调用 go-aria2，比对 RPC 响应结构与关键字段。
 
+const (
+	sampleTorrentB64 = "ZDg6YW5ub3VuY2UxNDpodHRwOi8vdHJhY2tlcjEzOmNyZWF0aW9uIGRhdGVpMTcxMjEyMzQ1NmU0OmluZm9kNjpsZW5ndGhpMTIzZTQ6bmFtZTg6dGVzdC5iaW4xMjpwaWVjZSBsZW5ndGhpMjYyMTQ0ZTY6cGllY2VzMjA6MTIzNDU2Nzg5MDEyMzQ1Njc4OTBlZQ=="
+	sampleMetalinkB64 = "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPG1ldGFsaW5rIHhtbG5zPSJ1cm46aWV0ZjpwYXJhbXM6eG1sOm5zOm1ldGFsaW5rIj4KICA8ZmlsZSBuYW1lPSJhLmJpbiI+CiAgICA8dXJsPmh0dHA6Ly9leGFtcGxlLmNvbS9hLmJpbjwvdXJsPgogIDwvZmlsZT4KICA8ZmlsZSBuYW1lPSJiLmJpbiI+CiAgICA8dXJsPmh0dHA6Ly9leGFtcGxlLmNvbS9iLmJpbjwvdXJsPgogIDwvZmlsZT4KPC9tZXRhbGluaz4="
+)
+
 func TestCompareAria2_PingAndVersion(t *testing.T) {
 	work := t.TempDir()
 	secret := "compare-secret"
@@ -255,6 +260,67 @@ func TestCompareAria2_TellWaiting(t *testing.T) {
 	goWaiting := decodeJSON[[]map[string]any](t, mustCall(t, ctx, goAria, "aria2.tellWaiting", 0, 10), "go waiting")
 	if len(aria2Waiting) < 3 || len(goWaiting) < 3 {
 		t.Fatalf("expected at least 3 waiting: aria2=%d go=%d", len(aria2Waiting), len(goWaiting))
+	}
+}
+
+func TestCompareAria2_AddTorrentTellStatus(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-torrent"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{sampleTorrentB64, []any{}, map[string]any{"pause": "true"}}
+	aria2GID := mustString(t, first(rawCall(t, ctx, aria2, goAria, "aria2.addTorrent", params)), "aria2 addTorrent")
+	goGID := mustString(t, second(rawCall(t, ctx, aria2, goAria, "aria2.addTorrent", params)), "go addTorrent")
+
+	aria2Status := decodeJSON[map[string]any](t, mustCall(t, ctx, aria2, "aria2.tellStatus", aria2GID), "aria2 status")
+	goStatus := decodeJSON[map[string]any](t, mustCall(t, ctx, goAria, "aria2.tellStatus", goGID), "go status")
+
+	for _, key := range []string{"gid", "status", "bittorrent"} {
+		if aria2Status[key] == nil {
+			t.Fatalf("aria2 tellStatus missing %q", key)
+		}
+		if goStatus[key] == nil {
+			t.Fatalf("go-aria2 tellStatus missing %q", key)
+		}
+	}
+	if aria2Status["status"] != goStatus["status"] {
+		t.Fatalf("status mismatch: aria2=%v go=%v", aria2Status["status"], goStatus["status"])
+	}
+}
+
+func TestCompareAria2_AddMetalink(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-metalink"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{sampleMetalinkB64, map[string]any{"pause": "true"}}
+	aria2GIDs := decodeJSON[[]string](t, first(rawCall(t, ctx, aria2, goAria, "aria2.addMetalink", params)), "aria2 metalink")
+	goGIDs := decodeJSON[[]string](t, second(rawCall(t, ctx, aria2, goAria, "aria2.addMetalink", params)), "go metalink")
+	if len(aria2GIDs) != 2 || len(goGIDs) != 2 {
+		t.Fatalf("expected 2 gids: aria2=%#v go=%#v", aria2GIDs, goGIDs)
+	}
+}
+
+func TestCompareAria2_RemoveDownloadResult(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-remove-result"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/remove-result.bin"}, map[string]any{"pause": "true"}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.remove", gid), d.name+" remove"); got != gid {
+			t.Fatalf("%s remove returned %q", d.name, got)
+		}
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.removeDownloadResult", gid), d.name+" removeDownloadResult"); got != "OK" {
+			t.Fatalf("%s removeDownloadResult returned %q", d.name, got)
+		}
 	}
 }
 

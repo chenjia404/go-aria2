@@ -219,8 +219,12 @@ func toBitTorrentResponse(item *task.Task) map[string]any {
 		return nil
 	}
 
+	mode := item.Meta["bt.mode"]
+	if mode == "" {
+		mode = "single"
+	}
 	response := map[string]any{
-		"mode": item.Meta["bt.mode"],
+		"mode": mode,
 		"info": map[string]any{
 			"name": item.Name,
 		},
@@ -237,7 +241,11 @@ func toBitTorrentResponse(item *task.Task) map[string]any {
 		response["createdBy"] = createdBy
 	}
 	if creationDate := item.Meta["bt.creationDate"]; creationDate != "" {
-		response["creationDate"] = creationDate
+		if parsed, err := strconv.ParseInt(creationDate, 10, 64); err == nil {
+			response["creationDate"] = parsed
+		} else {
+			response["creationDate"] = creationDate
+		}
 	}
 	return response
 }

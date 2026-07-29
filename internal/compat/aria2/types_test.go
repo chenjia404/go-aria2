@@ -33,6 +33,57 @@ func TestToStatusResponseRelatedDownloads(t *testing.T) {
 	}
 }
 
+func TestToBitTorrentResponseGatherMetadata(t *testing.T) {
+	t.Parallel()
+
+	item := &task.Task{
+		Protocol: task.ProtocolBT,
+		Name:     "aria2-test",
+		Meta: map[string]string{
+			"bt.mode":         "multi",
+			"bt.comment":      "REDNOAH.COM RULES",
+			"bt.createdBy":    "aria2",
+			"bt.creationDate": "1123456789",
+			"bt.trackers":     "http://tracker1\nhttp://tracker2\nhttp://tracker3",
+		},
+	}
+	bt := toBitTorrentResponse(item)
+	if bt["mode"] != "multi" {
+		t.Fatalf("mode: %#v", bt["mode"])
+	}
+	if bt["comment"] != "REDNOAH.COM RULES" {
+		t.Fatalf("comment: %#v", bt["comment"])
+	}
+	creationDate, ok := bt["creationDate"].(int64)
+	if !ok || creationDate != 1123456789 {
+		t.Fatalf("creationDate should be int64, got %#v", bt["creationDate"])
+	}
+	info := bt["info"].(map[string]any)
+	if info["name"] != "aria2-test" {
+		t.Fatalf("info.name: %#v", info["name"])
+	}
+	announceList := bt["announceList"].([][]string)
+	if len(announceList) != 3 || announceList[0][0] != "http://tracker1" {
+		t.Fatalf("announceList: %#v", announceList)
+	}
+
+	status := toStatusResponse(item, nil)
+	btSection, ok := status["bittorrent"].(map[string]any)
+	if !ok || btSection["creationDate"] != int64(1123456789) {
+		t.Fatalf("tellStatus bittorrent section: %#v", status["bittorrent"])
+	}
+}
+
+func TestToBitTorrentResponseDefaultsModeSingle(t *testing.T) {
+	t.Parallel()
+
+	item := &task.Task{Protocol: task.ProtocolBT, Name: "x"}
+	bt := toBitTorrentResponse(item)
+	if bt["mode"] != "single" {
+		t.Fatalf("expected default mode single, got %#v", bt["mode"])
+	}
+}
+
 func TestToBitTorrentResponseAnnounceListNested(t *testing.T) {
 	item := &task.Task{
 		Protocol: task.ProtocolBT,

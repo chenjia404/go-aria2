@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/chenjia404/go-aria2/internal/core/manager"
+	"github.com/chenjia404/go-aria2/internal/core/task"
 	"github.com/chenjia404/go-aria2/internal/rpc/jsonrpc"
 )
 
@@ -228,6 +229,37 @@ func TestRpcMethod_GetSessionInfo(t *testing.T) {
 	info := env.MustCall("aria2.getSessionInfo").(map[string]any)
 	if info["sessionId"] == nil || info["sessionId"] == "" {
 		t.Fatalf("expected sessionId, got %#v", info)
+	}
+}
+
+func TestRpcMethod_ChangeOption_RejectsInvalidSplit(t *testing.T) {
+	t.Parallel()
+	env := newRPCTestEnv(t, manager.Options{})
+	gid := env.MustGID("aria2.addUri", []any{"http://localhost/1"}, map[string]any{"pause": "true"})
+	env.ExpectError("aria2.changeOption", gid, map[string]any{"split": "bad"})
+}
+
+func TestRpcMethod_GatherStoppedDownloadBTMetadata(t *testing.T) {
+	t.Parallel()
+	env := newRPCTestEnv(t, manager.Options{})
+	gid := env.MustGID("aria2.addTorrent", sampleTorrentBase64(), map[string]any{"pause": "true"})
+	for _, item := range env.Driver.tasks {
+		if item.GID == gid {
+			item.Protocol = task.ProtocolBT
+			item.Name = "test.bin"
+			item.Meta = map[string]string{
+				"bt.creationDate": "1712123456",
+			}
+			item.Status = task.StatusComplete
+		}
+	}
+	status := env.Status(gid)
+	bt, ok := status["bittorrent"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected bittorrent section, got %#v", status["bittorrent"])
+	}
+	if bt["creationDate"] != int64(1712123456) {
+		t.Fatalf("creationDate: %#v", bt["creationDate"])
 	}
 }
 
