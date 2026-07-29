@@ -71,7 +71,38 @@ func (m *Manager) ChangeURI(ctx context.Context, gid string, fileIndex int, delU
 
 // ForcePauseAll 强制暂停所有活动与等待中的任务（aria2.forcePauseAll）。
 func (m *Manager) ForcePauseAll(ctx context.Context) error {
-	return m.pauseAll(ctx, true)
+	return m.SaveSession(ctx)
+}
+
+// paginateQueueStatus 按 CreatedAt 队列顺序分页返回 waiting/paused 任务。
+func (m *Manager) paginateQueueStatus(ctx context.Context, offset, limit int, statuses ...task.Status) ([]*task.Task, error) {
+	if limit <= 0 {
+		return []*task.Task{}, nil
+	}
+	items, err := m.listByStatuses(ctx, statuses...)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].GID < items[j].GID
+		}
+		return items[i].CreatedAt.Before(items[j].CreatedAt)
+	})
+	if offset < 0 {
+		offset = len(items) + offset
+		if offset < 0 {
+			offset = 0
+		}
+	}
+	if offset >= len(items) {
+		return []*task.Task{}, nil
+	}
+	end := offset + limit
+	if end > len(items) {
+		end = len(items)
+	}
+	return items[offset:end], nil
 }
 
 func (m *Manager) orderedQueueTaskIDs() []string {

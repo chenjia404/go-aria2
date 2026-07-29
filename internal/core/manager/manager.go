@@ -472,7 +472,7 @@ func (m *Manager) TellActive(ctx context.Context) ([]*task.Task, error) {
 
 // TellWaiting 返回 waiting �?paused 任务列表，支持分页�?
 func (m *Manager) TellWaiting(ctx context.Context, offset, limit int) ([]*task.Task, error) {
-	return m.paginateStatus(ctx, offset, limit, task.StatusWaiting)
+	return m.paginateQueueStatus(ctx, offset, limit, task.StatusWaiting, task.StatusPaused)
 }
 
 // TellStopped 返回 stopped 任务列表，支持分页�?
@@ -718,10 +718,8 @@ func (m *Manager) GetGlobalStat() GlobalStat {
 		switch item.Status {
 		case task.StatusActive:
 			stat.NumActive++
-		case task.StatusWaiting:
+		case task.StatusWaiting, task.StatusPaused:
 			stat.NumWaiting++
-		case task.StatusPaused:
-			// aria2 不把 paused 计入 numWaiting
 		case task.StatusComplete, task.StatusError, task.StatusRemoved:
 			stat.NumStopped++
 		}
