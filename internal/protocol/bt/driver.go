@@ -18,6 +18,7 @@ import (
 	"github.com/RoaringBitmap/roaring"
 	torrentlib "github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/storage"
+	"golang.org/x/time/rate"
 
 	"github.com/chenjia404/go-aria2/internal/core/manager"
 	"github.com/chenjia404/go-aria2/internal/core/task"
@@ -26,11 +27,16 @@ import (
 
 // Options 控制 BT 驱动底层 anacrolix/torrent Client 的初始化�?
 type Options struct {
-	DataDir    string
-	ListenPort int
-	EnableDHT  bool
-	MaxPeers   int
-	Crypto     CryptoOptions
+	DataDir               string
+	ListenPort            int
+	EnableDHT             bool
+	MaxPeers              int
+	Crypto                CryptoOptions
+	DHTFilePath           string
+	DHTFilePath6          string
+	DHTListenPort         int
+	EnableDHT6            bool
+	MaxOverallUploadLimit int64
 }
 
 type state struct {
@@ -49,6 +55,7 @@ type state struct {
 	seedStopped    bool
 	// selectFile 为 aria2 的 select-file 原始串；空表示下载全部文件（与未指定一致）。
 	selectFile string
+	options    map[string]string
 }
 
 // Driver 使用 anacrolix/torrent 作为 BT 协议实现�?
@@ -59,38 +66,65 @@ type Driver struct {
 	rebuildProgress func(*task.Task, *torrentlib.Torrent) error
 	closeOnce       sync.Once
 	closeErr        error
+	opts            Options
+	uploadLimiter   *rate.Limiter
+	dhtIPv4Path     string
+	dhtIPv6Path     string
 }
 
-func buildTorrentConfig(opts Options, listenPort int) *torrentlib.ClientConfig {
+func buildTorrentConfig(opts Options, listenPort int, uploadLimiter **rate.Limiter) *torrentlib.ClientConfig {
 	cfg := torrentlib.NewDefaultClientConfig()
 	cfg.DataDir = opts.DataDir
 	cfg.ListenPort = listenPort
 	cfg.NoDHT = !opts.EnableDHT
+	if !opts.EnableDHT6 {
+		cfg.DisableIPv6 = true
+	}
 	if opts.MaxPeers > 0 {
 		cfg.EstablishedConnsPerTorrent = opts.MaxPeers
 		cfg.TorrentPeersHighWater = opts.MaxPeers * 4
 		cfg.TorrentPeersLowWater = max(20, opts.MaxPeers/2)
 	}
+	if *uploadLimiter == nil {
+		if opts.MaxOverallUploadLimit > 0 {
+			burst := max(16*1024, int(opts.MaxOverallUploadLimit))
+			*uploadLimiter = rate.NewLimiter(rate.Limit(opts.MaxOverallUploadLimit), burst)
+		} else {
+			*uploadLimiter = rate.NewLimiter(rate.Inf, 64*1024)
+		}
+	}
+	cfg.UploadRateLimiter = *uploadLimiter
 	applyBTCryptoOptions(cfg, opts.Crypto)
 	return cfg
 }
 
-func newTorrentClient(opts Options) (*torrentlib.Client, error) {
-	client, err := torrentlib.NewClient(buildTorrentConfig(opts, opts.ListenPort))
+func effectiveListenPort(opts Options) int {
+	if opts.ListenPort > 0 {
+		return opts.ListenPort
+	}
+	if opts.DHTListenPort > 0 {
+		return opts.DHTListenPort
+	}
+	return 0
+}
+
+func newTorrentClient(opts Options, uploadLimiter **rate.Limiter) (*torrentlib.Client, error) {
+	listenPort := effectiveListenPort(opts)
+	client, err := torrentlib.NewClient(buildTorrentConfig(opts, listenPort, uploadLimiter))
 	if err == nil {
 		return client, nil
 	}
 	// 固定端口：多协议绑定失败时换动态端口
 	if opts.ListenPort != 0 {
 		log.Printf("[bt] listen on port %d failed: %v; retrying with listen-port=0", opts.ListenPort, err)
-		client, err = torrentlib.NewClient(buildTorrentConfig(opts, 0))
+		client, err = torrentlib.NewClient(buildTorrentConfig(opts, 0, uploadLimiter))
 		if err == nil {
 			return client, nil
 		}
 	}
 	// Windows 常见：udp4 报 WSAEACCES（权限/防火墙/Hyper-V 保留端口等），或 IPv6 UDP 异常
 	log.Printf("[bt] listen failed: %v; retrying with DisableIPv6", err)
-	cfg := buildTorrentConfig(opts, 0)
+	cfg := buildTorrentConfig(opts, 0, uploadLimiter)
 	cfg.DisableIPv6 = true
 	client, err = torrentlib.NewClient(cfg)
 	if err == nil {
@@ -98,7 +132,7 @@ func newTorrentClient(opts Options) (*torrentlib.Client, error) {
 	}
 	// 不再监听 UDP：仅 TCP BT（无 uTP、无 DHT），仍可与多数 peer 通信
 	log.Printf("[bt] listen failed: %v; retrying TCP-only (DisableUTP, NoDHT)", err)
-	cfg2 := buildTorrentConfig(opts, 0)
+	cfg2 := buildTorrentConfig(opts, 0, uploadLimiter)
 	cfg2.DisableIPv6 = true
 	cfg2.DisableUTP = true
 	cfg2.NoDHT = true
@@ -108,15 +142,46 @@ func newTorrentClient(opts Options) (*torrentlib.Client, error) {
 
 // New 创建 BT 驱动�?
 func New(opts Options) (*Driver, error) {
-	client, err := newTorrentClient(opts)
+	var uploadLimiter *rate.Limiter
+	client, err := newTorrentClient(opts, &uploadLimiter)
 	if err != nil {
 		return nil, err
 	}
+	dhtIPv4 := resolveDHTNodePath(opts.DHTFilePath, filepath.Join(opts.DataDir, "dht.dat"))
+	dhtIPv6 := resolveDHTNodePath(opts.DHTFilePath6, filepath.Join(opts.DataDir, "dht6.dat"))
+	loadDHTNodes(client, dhtIPv4, dhtIPv6)
 	return &Driver{
 		client:          client,
 		tasks:           make(map[string]*state),
 		rebuildProgress: RebuildBTProgress,
+		opts:            opts,
+		uploadLimiter:   uploadLimiter,
+		dhtIPv4Path:     dhtIPv4,
+		dhtIPv6Path:     dhtIPv6,
 	}, nil
+}
+
+// SetUploadLimit 运行时调整全局限速（字节/秒，0 表示不限速）。
+func (d *Driver) SetUploadLimit(bytesPerSec int64) {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if bytesPerSec <= 0 {
+		if d.uploadLimiter != nil {
+			d.uploadLimiter.SetLimit(rate.Inf)
+			d.uploadLimiter.SetBurst(64 * 1024)
+		}
+		return
+	}
+	burst := max(16*1024, int(bytesPerSec))
+	if d.uploadLimiter == nil {
+		d.uploadLimiter = rate.NewLimiter(rate.Limit(bytesPerSec), burst)
+		return
+	}
+	d.uploadLimiter.SetLimit(rate.Limit(bytesPerSec))
+	d.uploadLimiter.SetBurst(burst)
 }
 
 // Close 关闭底层 torrent client�?
@@ -135,6 +200,7 @@ func (d *Driver) Close() error {
 			return
 		}
 
+		saveDHTNodes(client, d.dhtIPv4Path, d.dhtIPv6Path)
 		errs := client.Close()
 		if len(errs) == 0 {
 			return
@@ -204,6 +270,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 		paused:     false,
 		started:    false,
 		selectFile: strings.TrimSpace(input.Options["select-file"]),
+		options:    cloneMap(input.Options),
 	}
 	d.mu.Lock()
 	d.tasks[item.ID] = st
@@ -488,6 +555,7 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 			completed:  saved.CompletedLength,
 			verified:   saved.VerifiedLength,
 			selectFile: strings.TrimSpace(effOpts["select-file"]),
+			options:    cloneMap(effOpts),
 		}
 
 		d.mu.Lock()
@@ -759,9 +827,27 @@ func (d *Driver) scheduleBTFileSelection(st *state) {
 	run := func() {
 		d.mu.RLock()
 		sel := st.selectFile
+		opts := cloneMap(st.options)
+		source := st.source
+		saveDir := st.saveDir
 		d.mu.RUnlock()
 		if err := applySelectFileToTorrent(tor, sel); err != nil {
 			log.Printf("[bt] apply select-file: %v", err)
+		}
+		if shouldSaveTorrentMetadata(opts, source.Kind) {
+			if err := saveTorrentMetadata(tor, saveDir); err != nil {
+				log.Printf("[bt] save metadata: %v", err)
+			}
+		}
+		if shouldPauseAfterMetadata(opts, source.Kind) {
+			d.mu.Lock()
+			if st != nil && !st.removed {
+				st.paused = true
+				st.started = false
+				st.torrent.DisallowDataDownload()
+				st.torrent.DisallowDataUpload()
+			}
+			d.mu.Unlock()
 		}
 	}
 	select {

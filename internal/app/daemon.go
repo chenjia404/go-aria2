@@ -57,20 +57,11 @@ func runDaemon(args []string) error {
 	if cfg.SeedTime > 0 {
 		logger.Printf("config warning: seed-time is accepted; enforcement applies to BT seeding via sync loop")
 	}
-	if !cfg.BTLoadSavedMetadata {
-		logger.Printf("config warning: bt-load-saved-metadata=false is accepted for aria2 compatibility, but saved metadata loading policy is not implemented yet")
-	}
-	if !cfg.BTSaveMetadata {
-		logger.Printf("config warning: bt-save-metadata=false is accepted for aria2 compatibility, but metadata persistence policy is not implemented yet")
-	}
-	if cfg.DHTFilePath != "" || cfg.DHTFilePath6 != "" || cfg.DHTListenPort != 0 || !cfg.EnableDHT6 {
-		logger.Printf("config warning: dht-file-path, dht-file-path6, dht-listen-port, and enable-dht6 are accepted for aria2 compatibility, but custom DHT state/listen behavior is not implemented yet")
-	}
 	if !cfg.FollowMetalink {
 		logger.Printf("config: follow-metalink=false — HTTP(S) .torrent URL 将作为普通文件下载，不解析为 BT 任务")
 	}
-	if cfg.PauseMetadata {
-		logger.Printf("config warning: pause-metadata is accepted for aria2 compatibility, but metadata pause workflow is not implemented yet")
+	if cfg.DHTListenPort > 0 && cfg.ListenPort > 0 && cfg.DHTListenPort != cfg.ListenPort {
+		logger.Printf("config: dht-listen-port=%d 与 listen-port=%d 不同时，DHT 仍与 uTP 共用 UDP 套接字（listen-port 优先）", cfg.DHTListenPort, cfg.ListenPort)
 	}
 
 	store := session.NewFileStore(runtimePaths.sessionPath)
@@ -92,6 +83,11 @@ func runDaemon(args []string) error {
 			RequireCrypto:   cfg.BTRequireCrypto,
 			MinCryptoLevel:  cfg.BTMinCryptoLevel,
 		},
+		DHTFilePath:           cfg.DHTFilePath,
+		DHTFilePath6:          cfg.DHTFilePath6,
+		DHTListenPort:         cfg.DHTListenPort,
+		EnableDHT6:            cfg.EnableDHT6,
+		MaxOverallUploadLimit: cfg.MaxOverallUploadLimit,
 	})
 	if err != nil {
 		logger.Fatalf("init bt driver failed: %v", err)
