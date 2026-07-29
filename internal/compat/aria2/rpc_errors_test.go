@@ -16,9 +16,9 @@ func TestMapManagerRPCError(t *testing.T) {
 		t.Fatalf("task not found: %#v", rpcErr)
 	}
 
-	rpcErr, ok = mapManagerRPCError(errors.New("unknown position mode: bad")).(*jsonrpc.RPCError)
+	rpcErr, ok = mapManagerRPCError(errors.New("cannot remove download result of active or waiting download")).(*jsonrpc.RPCError)
 	if !ok || rpcErr.Code != jsonrpc.CodeInvalidParams {
-		t.Fatalf("bad position mode: %#v", rpcErr)
+		t.Fatalf("remove download result: %#v", rpcErr)
 	}
 }
 
