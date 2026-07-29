@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Builder: 使用官方 Go 镜像编译静态二进制，减小运行时镜像体积。
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /src
 
