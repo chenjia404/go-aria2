@@ -43,6 +43,8 @@ type state struct {
 	lastReadBytes  int64
 	lastWriteBytes int64
 	lastSampleAt   time.Time
+	seedStartedAt  time.Time
+	seedStopped    bool
 	// selectFile 为 aria2 的 select-file 原始串；空表示下载全部文件（与未指定一致）。
 	selectFile string
 }
@@ -260,6 +262,59 @@ func (d *Driver) Pause(ctx context.Context, taskID string, force bool) error {
 }
 
 // Remove �?client 中移�?torrent�?
+// EnforceSeedPolicy 按 aria2 seed-ratio / seed-time 停止做种（ratio < 0 表示不限制比例）。
+func (d *Driver) EnforceSeedPolicy(ctx context.Context, taskID string, ratio float64, seedTime time.Duration) error {
+	_ = ctx
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	state := d.tasks[taskID]
+	if state == nil || state.removed || state.seedStopped {
+		return nil
+	}
+	if state.torrent.Info() == nil || !state.torrent.Complete().Bool() {
+		return nil
+	}
+	if state.seedStartedAt.IsZero() {
+		state.seedStartedAt = time.Now()
+	}
+
+	stats := state.torrent.Stats()
+	uploaded := stats.ConnStats.BytesWrittenData.Int64()
+	downloaded := state.torrent.Length()
+	if downloaded <= 0 {
+		downloaded = state.torrent.BytesCompleted()
+	}
+
+	stop := false
+	if ratio >= 0 {
+		switch {
+		case ratio == 0:
+			stop = true
+		case downloaded > 0 && float64(uploaded) >= ratio*float64(downloaded):
+			stop = true
+		}
+	}
+	if seedTime > 0 && time.Since(state.seedStartedAt) >= seedTime {
+		stop = true
+	}
+	if !stop {
+		return nil
+	}
+	d.stopSeedingLocked(state)
+	return nil
+}
+
+func (d *Driver) stopSeedingLocked(state *state) {
+	state.seedStopped = true
+	state.torrent.DisallowDataUpload()
+	for _, pc := range state.torrent.PeerConns() {
+		if pc != nil {
+			pc.Close()
+		}
+	}
+}
+
 func (d *Driver) Remove(ctx context.Context, taskID string, force bool) error {
 	_ = ctx
 	item, _ := d.snapshot("", taskID)

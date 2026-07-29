@@ -175,6 +175,8 @@ func TestServiceExposesVersionAndSessionMethods(t *testing.T) {
 		"aria2.pauseAll":             false,
 		"aria2.unpauseAll":           false,
 		"aria2.removeDownloadResult": false,
+		"aria2.purgeDownloadResult":  false,
+		"aria2.shutdown":             false,
 	}
 	for _, method := range methods {
 		if _, ok := required[method]; ok {
@@ -274,6 +276,38 @@ func TestBulkCommandsAndDownloadResultRemoval(t *testing.T) {
 	if !ok || stoppedMap["status"] != "paused" {
 		t.Fatalf("expected paused status after pauseAll, got %#v", stopped)
 	}
+	driver.tasks["task-1"].Status = task.StatusComplete
+	if _, err := service.Invoke(context.Background(), "aria2.removeDownloadResult", []any{gid}); err != nil {
+		t.Fatalf("removeDownloadResult returned error: %v", err)
+	}
+
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		t.Fatalf("expected download result removed, stat err=%v", err)
+	}
+	if _, err := service.Invoke(context.Background(), "aria2.tellStatus", []any{gid}); err == nil {
+		t.Fatalf("expected task removed after removeDownloadResult")
+	}
+}
+
+func TestUnpauseAllResumesPausedTasks(t *testing.T) {
+	t.Parallel()
+
+	driver := newRPCStubDriver()
+	service := NewService(manager.New(manager.Options{GlobalOptions: map[string]string{"dir": t.TempDir()}}), "")
+	service.manager.RegisterDriver(driver)
+
+	rawGID, err := service.Invoke(context.Background(), "aria2.addUri", []any{
+		[]any{"http://example.com/download.bin"},
+		map[string]any{"dir": t.TempDir()},
+	})
+	if err != nil {
+		t.Fatalf("addUri returned error: %v", err)
+	}
+	gid := rawGID.(string)
+
+	if _, err := service.Invoke(context.Background(), "aria2.pauseAll", nil); err != nil {
+		t.Fatalf("pauseAll returned error: %v", err)
+	}
 	if _, err := service.Invoke(context.Background(), "aria2.unpauseAll", nil); err != nil {
 		t.Fatalf("unpauseAll returned error: %v", err)
 	}
@@ -285,12 +319,31 @@ func TestBulkCommandsAndDownloadResultRemoval(t *testing.T) {
 	if !ok || resumedMap["status"] != "active" {
 		t.Fatalf("expected active status after unpauseAll, got %#v", resumed)
 	}
-	if _, err := service.Invoke(context.Background(), "aria2.removeDownloadResult", []any{gid}); err != nil {
-		t.Fatalf("removeDownloadResult returned error: %v", err)
-	}
+}
 
-	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
-		t.Fatalf("expected download result removed, stat err=%v", err)
+func TestPurgeDownloadResultClearsStoppedTasks(t *testing.T) {
+	t.Parallel()
+
+	driver := newRPCStubDriver()
+	mgr := manager.New(manager.Options{GlobalOptions: map[string]string{"dir": t.TempDir()}})
+	mgr.RegisterDriver(driver)
+	service := NewService(mgr, "")
+
+	rawGID, err := service.Invoke(context.Background(), "aria2.addUri", []any{
+		[]any{"http://example.com/download.bin"},
+		map[string]any{"dir": t.TempDir()},
+	})
+	if err != nil {
+		t.Fatalf("addUri returned error: %v", err)
+	}
+	gid := rawGID.(string)
+	driver.tasks["task-1"].Status = task.StatusComplete
+
+	if _, err := service.Invoke(context.Background(), "aria2.purgeDownloadResult", nil); err != nil {
+		t.Fatalf("purgeDownloadResult returned error: %v", err)
+	}
+	if _, err := service.Invoke(context.Background(), "aria2.tellStatus", []any{gid}); err == nil {
+		t.Fatalf("expected stopped task purged from manager")
 	}
 }
 

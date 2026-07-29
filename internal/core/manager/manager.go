@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"sort"
 	"strconv"
@@ -225,6 +226,16 @@ func (m *Manager) Remove(ctx context.Context, gid string, force bool) (*task.Tas
 	}
 
 	removed := updated.Clone()
+	if err := m.detachTask(ctx, taskID, driver, removed); err != nil {
+		return nil, err
+	}
+	if err := m.fillSlots(ctx); err != nil {
+		return nil, err
+	}
+	return removed.Clone(), nil
+}
+
+func (m *Manager) detachTask(ctx context.Context, taskID string, driver Driver, removed *task.Task) error {
 	m.mu.Lock()
 	delete(m.tasks, taskID)
 	delete(m.driverByTaskID, taskID)
@@ -233,13 +244,12 @@ func (m *Manager) Remove(ctx context.Context, gid string, force bool) (*task.Tas
 		p.PurgeLocalState(taskID)
 	}
 	if err := m.SaveSession(ctx); err != nil {
-		return nil, err
+		return err
 	}
-	m.emit(EventTaskRemoved, removed)
-	if err := m.fillSlots(ctx); err != nil {
-		return nil, err
+	if removed != nil {
+		m.emit(EventTaskRemoved, removed)
 	}
-	return removed.Clone(), nil
+	return nil
 }
 
 // Pause 暂停任务�?
@@ -320,9 +330,19 @@ func (m *Manager) UnpauseAll(ctx context.Context) error {
 
 // RemoveDownloadResult 删除任务对应的下载结果文件，不移除任务本身�?
 func (m *Manager) RemoveDownloadResult(ctx context.Context, gid string) error {
-	_, current, _, err := m.lookupByGID(gid)
+	taskID, _, driver, err := m.lookupByGID(gid)
 	if err != nil {
 		return err
+	}
+
+	current, err := m.tellStatusByID(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	switch current.Status {
+	case task.StatusComplete, task.StatusError:
+	default:
+		return fmt.Errorf("cannot remove download result of active or waiting download")
 	}
 
 	for _, file := range current.Files {
@@ -332,7 +352,71 @@ func (m *Manager) RemoveDownloadResult(ctx context.Context, gid string) error {
 		_ = os.Remove(file.Path)
 	}
 
-	m.emit(EventTaskUpdated, m.GetByGID(gid))
+	if err := driver.Remove(ctx, taskID, false); err != nil && !errors.Is(err, ErrTaskNotFound) {
+		return err
+	}
+	removed := current.Clone()
+	if updated, err := driver.TellStatus(ctx, taskID); err == nil && updated != nil {
+		removed = updated.Clone()
+		if removed.GID == "" {
+			removed.GID = current.GID
+		}
+		if removed.ID == "" {
+			removed.ID = current.ID
+		}
+	}
+	return m.detachTask(ctx, taskID, driver, removed)
+}
+
+func (m *Manager) PurgeDownloadResult(ctx context.Context) error {
+	taskIDs := m.snapshotTaskIDsByStatus(task.StatusComplete, task.StatusError, task.StatusRemoved)
+	for _, taskID := range taskIDs {
+		_, current, driver, err := m.lookupByTaskID(taskID)
+		if err != nil {
+			continue
+		}
+		if err := driver.Remove(ctx, taskID, false); err != nil && !errors.Is(err, ErrTaskNotFound) {
+			return err
+		}
+		if err := m.detachTask(ctx, taskID, driver, current.Clone()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Manager) EnforceSeedLimits(ctx context.Context) error {
+	ratio, ratioSet := parseSeedRatioOption(m.globalOptions["seed-ratio"])
+	seedTime := parseSeedTimeOption(m.globalOptions["seed-time"])
+	if !ratioSet && seedTime <= 0 {
+		return nil
+	}
+
+	m.mu.RLock()
+	jobs := make([]struct {
+		taskID string
+		driver Driver
+	}, 0)
+	for taskID, item := range m.tasks {
+		if item == nil || item.Protocol != task.ProtocolBT {
+			continue
+		}
+		jobs = append(jobs, struct {
+			taskID string
+			driver Driver
+		}{taskID: taskID, driver: m.driverByTaskID[taskID]})
+	}
+	m.mu.RUnlock()
+
+	for _, job := range jobs {
+		enforcer, ok := job.driver.(SeedPolicyEnforcer)
+		if !ok {
+			continue
+		}
+		if err := enforcer.EnforceSeedPolicy(ctx, job.taskID, effectiveSeedRatio(ratioSet, ratio), seedTime); err != nil && !errors.Is(err, ErrTaskNotFound) {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -916,6 +1000,48 @@ func (m *Manager) lookupByGID(gid string) (string, *task.Task, Driver, error) {
 		}
 	}
 	return "", nil, nil, ErrTaskNotFound
+}
+
+func (m *Manager) lookupByTaskID(taskID string) (string, *task.Task, Driver, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	item := m.tasks[taskID]
+	if item == nil {
+		return "", nil, nil, ErrTaskNotFound
+	}
+	return taskID, item.Clone(), m.driverByTaskID[taskID], nil
+}
+
+func parseSeedRatioOption(value string) (float64, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
+}
+
+func parseSeedTimeOption(value string) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	minutes, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || minutes <= 0 {
+		return 0
+	}
+	return time.Duration(minutes) * time.Minute
+}
+
+func effectiveSeedRatio(set bool, ratio float64) float64 {
+	if !set {
+		return -1
+	}
+	return ratio
 }
 
 func (m *Manager) storeTask(updated *task.Task, driver Driver) *task.Task {

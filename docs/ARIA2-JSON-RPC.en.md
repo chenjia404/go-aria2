@@ -222,7 +222,27 @@ Below, **`params` are after stripping the optional `token:` prefix** (when secre
 |-------|------|------|----------|-------------|
 | `0` | gid | string | yes | Task GID |
 
-Deletes **downloaded files** for the task; does not remove the task.
+Deletes **downloaded files** for `complete` / `error` tasks and removes the task from the manager (aria2-compatible).
+
+**`result`:** `string` — `"OK"`.
+
+---
+
+### 6.7.1 `aria2.purgeDownloadResult`
+
+**`params`:** none (besides token).
+
+Clears all stopped (`complete` / `error` / `removed`) tasks from the manager **without** deleting local files.
+
+**`result`:** `string` — `"OK"`.
+
+---
+
+### 6.7.2 `aria2.shutdown`
+
+| Index | Name | Type | Required | Description |
+|-------|------|------|----------|-------------|
+| `0` | force | boolean / string | no | Immediate shutdown when `true`; graceful by default |
 
 **`result`:** `string` — `"OK"`.
 
@@ -257,7 +277,7 @@ Deletes **downloaded files** for the task; does not remove the task.
 | `1` | num | number / string | yes | Limit |
 | `2` | keys | array[string] | no | Field filter |
 
-**`result`:** **array[object]** — paginated `waiting` and `paused` tasks.
+**`result`:** **array[object]** — paginated `waiting` tasks only (**excludes** `paused`, same as aria2).
 
 ---
 
