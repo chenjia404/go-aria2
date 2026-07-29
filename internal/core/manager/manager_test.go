@@ -410,3 +410,57 @@ func TestSaveSessionRefreshesDriverStateBeforePersist(t *testing.T) {
 		t.Fatalf("unexpected persisted status: %+v", saved)
 	}
 }
+
+func TestManagerAria2QueueSemantics(t *testing.T) {
+	t.Parallel()
+
+	driver := newStubDriver()
+	mgr := New(Options{DefaultDir: "./downloads"})
+	mgr.RegisterDriver(driver)
+
+	pausedTask := &task.Task{
+		ID:       "task-paused",
+		GID:      "gid-paused",
+		Protocol: task.ProtocolHTTP,
+		Status:   task.StatusPaused,
+		SaveDir:  "./downloads",
+	}
+	waitingTask := &task.Task{
+		ID:       "task-waiting",
+		GID:      "gid-waiting",
+		Protocol: task.ProtocolHTTP,
+		Status:   task.StatusWaiting,
+		SaveDir:  "./downloads",
+	}
+	driver.tasks[pausedTask.ID] = pausedTask.Clone()
+	driver.tasks[waitingTask.ID] = waitingTask.Clone()
+	mgr.mu.Lock()
+	mgr.tasks[pausedTask.ID] = pausedTask.Clone()
+	mgr.tasks[waitingTask.ID] = waitingTask.Clone()
+	mgr.driverByTaskID[pausedTask.ID] = driver
+	mgr.driverByTaskID[waitingTask.ID] = driver
+	mgr.mu.Unlock()
+
+	waitingList, err := mgr.TellWaiting(context.Background(), 0, 10)
+	if err != nil {
+		t.Fatalf("tellWaiting: %v", err)
+	}
+	if len(waitingList) != 1 || waitingList[0].GID != waitingTask.GID {
+		t.Fatalf("tellWaiting should only include queued tasks: %#v", waitingList)
+	}
+
+	stat := mgr.GetGlobalStat()
+	if stat.NumWaiting != 1 {
+		t.Fatalf("numWaiting should exclude paused, got %d", stat.NumWaiting)
+	}
+
+	if err := mgr.UnpauseAll(context.Background()); err != nil {
+		t.Fatalf("unpauseAll: %v", err)
+	}
+	if status, _ := mgr.TellStatus(context.Background(), waitingTask.GID); status.Status != task.StatusWaiting {
+		t.Fatalf("waiting task should remain waiting after unpauseAll, got %s", status.Status)
+	}
+	if status, _ := mgr.TellStatus(context.Background(), pausedTask.GID); status.Status != task.StatusActive {
+		t.Fatalf("paused task should resume after unpauseAll, got %s", status.Status)
+	}
+}

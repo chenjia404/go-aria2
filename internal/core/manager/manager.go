@@ -305,7 +305,7 @@ func (m *Manager) Unpause(ctx context.Context, gid string) (*task.Task, error) {
 
 // UnpauseAll 恢复所有暂停或等待中的任务�?
 func (m *Manager) UnpauseAll(ctx context.Context) error {
-	taskIDs := m.snapshotTaskIDsByStatus(task.StatusPaused, task.StatusWaiting)
+	taskIDs := m.snapshotTaskIDsByStatus(task.StatusPaused)
 	for _, taskID := range taskIDs {
 		updated, err := m.unpauseTaskByID(ctx, taskID)
 		if err != nil && !errors.Is(err, ErrTaskNotFound) {
@@ -352,7 +352,7 @@ func (m *Manager) TellActive(ctx context.Context) ([]*task.Task, error) {
 
 // TellWaiting 返回 waiting �?paused 任务列表，支持分页�?
 func (m *Manager) TellWaiting(ctx context.Context, offset, limit int) ([]*task.Task, error) {
-	return m.paginateStatus(ctx, offset, limit, task.StatusWaiting, task.StatusPaused)
+	return m.paginateStatus(ctx, offset, limit, task.StatusWaiting)
 }
 
 // TellStopped 返回 stopped 任务列表，支持分页�?
@@ -567,8 +567,10 @@ func (m *Manager) GetGlobalStat() GlobalStat {
 		switch item.Status {
 		case task.StatusActive:
 			stat.NumActive++
-		case task.StatusWaiting, task.StatusPaused:
+		case task.StatusWaiting:
 			stat.NumWaiting++
+		case task.StatusPaused:
+			// aria2 不把 paused 计入 numWaiting
 		case task.StatusComplete, task.StatusError, task.StatusRemoved:
 			stat.NumStopped++
 		}

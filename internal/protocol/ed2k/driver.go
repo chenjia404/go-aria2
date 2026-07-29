@@ -133,7 +133,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 		TotalLength:    link.Size,
 		VerifiedLength: 0,
 		Files: []task.File{{
-			Index:           0,
+			Index:           1,
 			Path:            targetPath,
 			Length:          link.Size,
 			CompletedLength: 0,
@@ -377,7 +377,7 @@ func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, 
 	item.UploadSpeed = int64(snapshot.Status.UploadRate)
 	item.Connections = snapshot.ActivePeers
 	item.Files = []task.File{{
-		Index:           0,
+		Index:           1,
 		Path:            snapshot.FilePath,
 		Length:          snapshot.Size,
 		CompletedLength: snapshot.Status.TotalDone,

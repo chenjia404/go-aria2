@@ -32,7 +32,7 @@ func (d *rpcStubDriver) Add(ctx context.Context, input task.AddTaskInput) (*task
 		Status:   task.StatusWaiting,
 		SaveDir:  input.SaveDir,
 		Files: []task.File{{
-			Index:    0,
+			Index:    1,
 			Path:     filepath.Join(input.SaveDir, "download.bin"),
 			Selected: true,
 			URIs:     append([]string(nil), input.URIs...),

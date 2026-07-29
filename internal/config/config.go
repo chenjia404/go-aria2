@@ -70,7 +70,7 @@ type Config struct {
 func Default() *Config {
 	return &Config{
 		EnableRPC:              true,
-		RPCListenPort:          16800,
+		RPCListenPort:          6800,
 		RPCListenAll:           false,
 		RPCAllowOriginAll:      false,
 		RPCMaxRequestSize:      10 << 20,

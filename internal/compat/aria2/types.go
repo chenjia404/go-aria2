@@ -27,8 +27,16 @@ func toStatusResponse(item *task.Task, keys []string) map[string]any {
 		"infoHash":               item.InfoHash,
 		"dir":                    item.SaveDir,
 		"files":                  toFilesResponse(item.Files),
-		"errorCode":              item.ErrorCode,
+		"errorCode":              defaultErrorCode(item.ErrorCode),
 		"errorMessage":           item.ErrorMessage,
+	}
+	if item.Protocol == task.ProtocolBT {
+		if numPieces := item.Meta["bt.totalPieces"]; numPieces != "" {
+			all["numPieces"] = numPieces
+		}
+		if bitfield := item.Meta["bitfield"]; bitfield != "" {
+			all["bitfield"] = bitfield
+		}
 	}
 	if bittorrent := toBitTorrentResponse(item); bittorrent != nil {
 		all["bittorrent"] = bittorrent
@@ -179,6 +187,14 @@ func cloneOptionMap(src map[string]string) map[string]string {
 
 func formatInt64(v int64) string {
 	return strconv.FormatInt(v, 10)
+}
+
+// defaultErrorCode aria2 在无错误时返回 "0"。
+func defaultErrorCode(code string) string {
+	if strings.TrimSpace(code) == "" {
+		return "0"
+	}
+	return code
 }
 
 func toURIResponse(uris []string) []map[string]any {

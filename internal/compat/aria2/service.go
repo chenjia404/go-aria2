@@ -2,7 +2,6 @@ package aria2
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"strconv"
 	"strings"
@@ -190,27 +189,14 @@ func (s *Service) addURI(ctx context.Context, params []any) (any, error) {
 }
 
 func (s *Service) addTorrent(ctx context.Context, params []any) (any, error) {
-	if len(params) == 0 {
-		return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "torrent is required")
-	}
-
-	encoded, ok := params[0].(string)
-	if !ok || encoded == "" {
-		return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "torrent payload must be base64 string")
-	}
-
-	payload, err := base64.StdEncoding.DecodeString(encoded)
+	payload, uris, options, err := parseAddTorrentParams(params)
 	if err != nil {
-		return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, fmt.Sprintf("invalid torrent payload: %v", err))
-	}
-
-	options := map[string]string{}
-	if len(params) >= 3 {
-		options = parseOptions(params[2])
+		return nil, err
 	}
 
 	created, err := s.manager.Add(ctx, task.AddTaskInput{
 		Torrent: payload,
+		URIs:    uris,
 		SaveDir: options["dir"],
 		Options: options,
 	})
@@ -507,12 +493,15 @@ func (s *Service) multicall(ctx context.Context, params []any) (any, error) {
 	return out, nil
 }
 
+// releaseDate 与构建版本对齐，避免每次 RPC 调用返回值变化（aria2 为固定发布日期）。
+const releaseDate = "2026-03-01"
+
 func (s *Service) getVersion() map[string]any {
 	return map[string]any{
 		"version":            "0.1.0",
 		"enabledFeatures":    []string{"BitTorrent", "ED2K", "HTTP", "JSON-RPC", "WebSocket"},
 		"fullVersion":        "github.com/chenjia404/go-aria2/0.1.0",
-		"releaseDate":        time.Now().Format("2006-01-02"),
+		"releaseDate":        releaseDate,
 		"organization":       "github.com/chenjia404/go-aria2",
 		"copyright":          "github.com/chenjia404/go-aria2 contributors",
 		"enabledProtocols":   []string{"bt", "ed2k", "http", "https"},
