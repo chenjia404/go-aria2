@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/chenjia404/go-aria2/internal/core/manager"
+	"github.com/chenjia404/go-aria2/internal/core/session"
 	"github.com/chenjia404/go-aria2/internal/core/task"
 )
 
@@ -184,6 +185,8 @@ func TestServiceExposesVersionAndSessionMethods(t *testing.T) {
 		"aria2.purgeDownloadResult":  false,
 		"aria2.shutdown":             false,
 		"aria2.addMetalink":          false,
+		"aria2.ping":                 false,
+		"aria2.saveSession":          false,
 	}
 	for _, method := range methods {
 		if _, ok := required[method]; ok {
@@ -405,5 +408,59 @@ func TestPeersAndServersMethods(t *testing.T) {
 	}
 	if serversList[0]["currentUri"] != "http://mirror.example.com/download.bin" {
 		t.Fatalf("unexpected server mapping: %#v", serversList[0])
+	}
+}
+
+func TestPingAndSaveSession(t *testing.T) {
+	t.Parallel()
+
+	sessionPath := filepath.Join(t.TempDir(), "session.json")
+	store := session.NewFileStore(sessionPath)
+	mgr := manager.New(manager.Options{
+		DefaultDir: "./downloads",
+		Store:      store,
+	})
+	mgr.RegisterDriver(newRPCStubDriver())
+
+	service := NewService(mgr, "")
+	service.SetSessionPath(sessionPath)
+
+	rawPing, err := service.Invoke(context.Background(), "aria2.ping", nil)
+	if err != nil {
+		t.Fatalf("ping returned error: %v", err)
+	}
+	if rawPing != "pong" {
+		t.Fatalf("expected pong, got %#v", rawPing)
+	}
+
+	_, err = mgr.Add(context.Background(), task.AddTaskInput{
+		URI:     "http://example.com/file.bin",
+		SaveDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Add returned error: %v", err)
+	}
+
+	rawSave, err := service.Invoke(context.Background(), "aria2.saveSession", nil)
+	if err != nil {
+		t.Fatalf("saveSession returned error: %v", err)
+	}
+	if rawSave != "OK" {
+		t.Fatalf("expected OK, got %#v", rawSave)
+	}
+	if _, err := os.Stat(sessionPath); err != nil {
+		t.Fatalf("expected session file at %s: %v", sessionPath, err)
+	}
+
+	customPath := filepath.Join(t.TempDir(), "custom-session.json")
+	rawSave, err = service.Invoke(context.Background(), "aria2.saveSession", []any{customPath})
+	if err != nil {
+		t.Fatalf("saveSession with custom path returned error: %v", err)
+	}
+	if rawSave != "OK" {
+		t.Fatalf("expected OK, got %#v", rawSave)
+	}
+	if _, err := os.Stat(customPath); err != nil {
+		t.Fatalf("expected custom session file at %s: %v", customPath, err)
 	}
 }

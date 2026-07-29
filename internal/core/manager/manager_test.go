@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -408,6 +410,37 @@ func TestSaveSessionRefreshesDriverStateBeforePersist(t *testing.T) {
 	}
 	if saved.Status != task.StatusPaused {
 		t.Fatalf("unexpected persisted status: %+v", saved)
+	}
+}
+
+func TestSaveSessionToWritesAlternatePath(t *testing.T) {
+	t.Parallel()
+
+	store := &recordingStore{}
+	mgr := New(Options{
+		DefaultDir: "./downloads",
+		Store:      store,
+	})
+	mgr.RegisterDriver(newStubDriver())
+
+	_, err := mgr.Add(context.Background(), task.AddTaskInput{
+		URI:     "http://example.com/file.bin",
+		SaveDir: "./downloads",
+	})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	initialSaves := len(store.saved)
+
+	customPath := filepath.Join(t.TempDir(), "custom-session.json")
+	if err := mgr.SaveSessionTo(context.Background(), customPath); err != nil {
+		t.Fatalf("SaveSessionTo: %v", err)
+	}
+	if _, err := os.Stat(customPath); err != nil {
+		t.Fatalf("expected custom session file: %v", err)
+	}
+	if len(store.saved) != initialSaves {
+		t.Fatalf("SaveSessionTo should not write default store, got %d saves (initial %d)", len(store.saved), initialSaves)
 	}
 }
 
