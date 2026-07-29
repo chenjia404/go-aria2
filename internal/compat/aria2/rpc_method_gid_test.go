@@ -31,8 +31,8 @@ func TestRpcMethod_GetOption_ReturnsTaskDir(t *testing.T) {
 	if opts["dir"] != saveDir {
 		t.Fatalf("dir: %#v", opts["dir"])
 	}
-	if opts["pause"] != "true" {
-		t.Fatalf("pause: %#v", opts["pause"])
+	if _, hasPause := opts["pause"]; hasPause {
+		t.Fatalf("aria2 getOption should not expose pause, got %#v", opts)
 	}
 }
 

@@ -135,17 +135,8 @@ func (d *rpcStubDriver) GetPeers(ctx context.Context, taskID string) ([]manager.
 	if item := d.tasks[taskID]; item == nil {
 		return nil, manager.ErrTaskNotFound
 	}
-	return []manager.PeerInfo{{
-		PeerID:        "peer-1",
-		IP:            "10.0.0.2",
-		Port:          6881,
-		Bitfield:      "ff",
-		AmChoking:     true,
-		PeerChoking:   false,
-		DownloadSpeed: 1234,
-		UploadSpeed:   56,
-		Seeder:        true,
-	}}, nil
+	// HTTP 任务与 aria2 一致：getPeers 返回空数组。
+	return []manager.PeerInfo{}, nil
 }
 
 func (d *rpcStubDriver) GetServers(ctx context.Context, taskID string) ([]manager.FileServerInfo, error) {
@@ -335,10 +326,13 @@ func TestOptionAndURIHelpers(t *testing.T) {
 	}
 
 	opts := toOptionResponse(item)
-	if opts["dir"] != "./downloads" || opts["pause"] != "true" || opts["out"] != "sample.bin" {
+	if opts["dir"] != "./downloads" || opts["out"] != "sample.bin" {
 		t.Fatalf("unexpected option mapping: %#v", opts)
 	}
-	uris := toURIsResponse(item.Files)
+	if _, hasPause := opts["pause"]; hasPause {
+		t.Fatalf("getOption should not expose pause: %#v", opts)
+	}
+	uris := toURIsResponse(item.Files, item.Status)
 	if len(uris) != 3 {
 		t.Fatalf("unexpected uri mapping: %#v", uris)
 	}
@@ -481,11 +475,8 @@ func TestPeersAndServersMethods(t *testing.T) {
 		t.Fatalf("getPeers returned error: %v", err)
 	}
 	peers, ok := rawPeers.([]map[string]any)
-	if !ok || len(peers) != 1 {
-		t.Fatalf("unexpected peers payload: %#v", rawPeers)
-	}
-	if peers[0]["ip"] != "10.0.0.2" || peers[0]["seeder"] != "true" {
-		t.Fatalf("unexpected peer mapping: %#v", peers[0])
+	if !ok || len(peers) != 0 {
+		t.Fatalf("HTTP getPeers should be empty, got %#v", rawPeers)
 	}
 
 	rawServers, err := service.Invoke(context.Background(), "aria2.getServers", []any{gid})

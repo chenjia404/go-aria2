@@ -11,6 +11,8 @@ import (
 // hiddenOptions 与 aria2 一致：getOption/getGlobalOption 不返回这些内部选项。
 var hiddenOptions = map[string]struct{}{
 	"startup-idle-time": {},
+	// aria2 getOption 不返回 pause（仅 add* 时作为输入选项）。
+	"pause": {},
 }
 
 // taskDisallowedOptions 仅允许 changeGlobalOption 修改；changeOption 传入时静默忽略。

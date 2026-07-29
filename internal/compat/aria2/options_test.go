@@ -98,9 +98,13 @@ func TestFilterHiddenOptions(t *testing.T) {
 	filtered := filterHiddenOptions(map[string]string{
 		"dir":               "/tmp",
 		"startup-idle-time": "60",
+		"pause":             "true",
 	})
 	if _, ok := filtered["startup-idle-time"]; ok {
 		t.Fatal("hidden option should be removed")
+	}
+	if _, ok := filtered["pause"]; ok {
+		t.Fatal("pause should be hidden from getOption")
 	}
 	if filtered["dir"] != "/tmp" {
 		t.Fatalf("expected dir preserved, got %#v", filtered)
