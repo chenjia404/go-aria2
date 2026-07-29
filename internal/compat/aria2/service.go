@@ -506,7 +506,11 @@ func (s *Service) getFiles(ctx context.Context, params []any) (any, error) {
 	if err != nil {
 		return nil, mapManagerRPCError(err)
 	}
-	return toFilesResponse(files), nil
+	item, err := s.manager.TellStatus(ctx, gid)
+	if err != nil {
+		return nil, mapManagerRPCError(err)
+	}
+	return toFilesResponse(files, item.Status), nil
 }
 
 func (s *Service) getPeers(ctx context.Context, params []any) (any, error) {
@@ -545,7 +549,7 @@ func (s *Service) getUris(ctx context.Context, params []any) (any, error) {
 	if err != nil {
 		return nil, mapManagerRPCError(err)
 	}
-	return toURIsResponse(item.Files), nil
+	return toURIsResponse(item.Files, item.Status), nil
 }
 
 func (s *Service) getOption(ctx context.Context, params []any) (any, error) {

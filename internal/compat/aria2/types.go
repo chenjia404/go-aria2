@@ -26,7 +26,7 @@ func toStatusResponse(item *task.Task, keys []string) map[string]any {
 		"seeder":                 strconv.FormatBool(item.Seeder),
 		"infoHash":               item.InfoHash,
 		"dir":                    item.SaveDir,
-		"files":                  toFilesResponse(item.Files),
+		"files":                  toFilesResponse(item.Files, item.Status),
 		"errorCode":              defaultErrorCode(item.ErrorCode),
 		"errorMessage":           item.ErrorMessage,
 	}
@@ -61,8 +61,9 @@ func toStatusResponse(item *task.Task, keys []string) map[string]any {
 }
 
 // toFilesResponse 将统一文件模型映射�?aria2 文件视图�?
-func toFilesResponse(files []task.File) []map[string]any {
+func toFilesResponse(files []task.File, status task.Status) []map[string]any {
 	out := make([]map[string]any, 0, len(files))
+	uriStatus := uriStatusForTask(status)
 	for _, file := range files {
 		out = append(out, map[string]any{
 			"index":           strconv.Itoa(file.Index),
@@ -70,7 +71,7 @@ func toFilesResponse(files []task.File) []map[string]any {
 			"length":          formatInt64(file.Length),
 			"completedLength": formatInt64(file.CompletedLength),
 			"selected":        strconv.FormatBool(file.Selected),
-			"uris":            toURIResponse(file.URIs),
+			"uris":            toURIResponse(file.URIs, uriStatus),
 		})
 	}
 	return out
@@ -116,9 +117,10 @@ func toServersResponse(files []manager.FileServerInfo) []map[string]any {
 }
 
 // toURIsResponse 将统一文件 URI 列表映射�?aria2 URI 视图�?
-func toURIsResponse(files []task.File) []map[string]any {
+func toURIsResponse(files []task.File, status task.Status) []map[string]any {
 	out := make([]map[string]any, 0)
 	seen := map[string]struct{}{}
+	uriStatus := uriStatusForTask(status)
 	for _, file := range files {
 		for _, uri := range file.URIs {
 			if uri == "" {
@@ -130,7 +132,7 @@ func toURIsResponse(files []task.File) []map[string]any {
 			seen[uri] = struct{}{}
 			out = append(out, map[string]any{
 				"uri":    uri,
-				"status": "used",
+				"status": uriStatus,
 			})
 		}
 	}
@@ -168,11 +170,6 @@ func toOptionResponse(item *task.Task) map[string]string {
 	if item.SaveDir != "" {
 		options["dir"] = item.SaveDir
 	}
-	if item.Status == task.StatusPaused {
-		options["pause"] = "true"
-	} else {
-		options["pause"] = "false"
-	}
 	if item.Name != "" {
 		options["out"] = item.Name
 	}
@@ -203,12 +200,21 @@ func defaultErrorCode(code string) string {
 	return code
 }
 
-func toURIResponse(uris []string) []map[string]any {
+func uriStatusForTask(status task.Status) string {
+	switch status {
+	case task.StatusWaiting, task.StatusPaused:
+		return "waiting"
+	default:
+		return "used"
+	}
+}
+
+func toURIResponse(uris []string, uriStatus string) []map[string]any {
 	out := make([]map[string]any, 0, len(uris))
 	for _, uri := range uris {
 		out = append(out, map[string]any{
 			"uri":    uri,
-			"status": "used",
+			"status": uriStatus,
 		})
 	}
 	return out
