@@ -492,6 +492,53 @@ func TestCompareAria2_GetFiles(t *testing.T) {
 	}
 }
 
+func TestCompareAria2_GetPeersAndGetUris(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-peers-uris"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/peers-uris.bin"}, map[string]any{"pause": "true"}}
+	aria2GID := mustString(t, first(rawCall(t, ctx, aria2, goAria, "aria2.addUri", params)), "aria2 addUri")
+	goGID := mustString(t, second(rawCall(t, ctx, aria2, goAria, "aria2.addUri", params)), "go addUri")
+
+	aria2Peers := decodeJSON[[]map[string]any](t, mustCall(t, ctx, aria2, "aria2.getPeers", aria2GID), "aria2 getPeers")
+	goPeers := decodeJSON[[]map[string]any](t, mustCall(t, ctx, goAria, "aria2.getPeers", goGID), "go getPeers")
+	if len(aria2Peers) != 0 || len(goPeers) != 0 {
+		t.Fatalf("HTTP task getPeers should be empty: aria2=%#v go=%#v", aria2Peers, goPeers)
+	}
+
+	aria2URIs := decodeJSON[[]map[string]any](t, mustCall(t, ctx, aria2, "aria2.getUris", aria2GID), "aria2 getUris")
+	goURIs := decodeJSON[[]map[string]any](t, mustCall(t, ctx, goAria, "aria2.getUris", goGID), "go getUris")
+	if len(aria2URIs) != 1 || len(goURIs) != 1 {
+		t.Fatalf("expected one uri entry: aria2=%#v go=%#v", aria2URIs, goURIs)
+	}
+	if aria2URIs[0]["status"] != "waiting" || goURIs[0]["status"] != "waiting" {
+		t.Fatalf("paused task uri status should be waiting: aria2=%#v go=%#v", aria2URIs[0], goURIs[0])
+	}
+}
+
+func TestCompareAria2_GetOptionOmitsPause(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-getoption-pause"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/no-pause-opt.bin"}, map[string]any{"pause": "true", "out": "no-pause-opt.bin"}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		opts := decodeJSON[map[string]string](t, mustCall(t, ctx, d, "aria2.getOption", gid), d.name+" getOption")
+		if opts["out"] != "no-pause-opt.bin" {
+			t.Fatalf("%s out mismatch: %#v", d.name, opts)
+		}
+		if _, ok := opts["pause"]; ok {
+			t.Fatalf("%s getOption should not include pause: %#v", d.name, opts)
+		}
+	}
+}
+
 func TestCompareAria2_ForceRemove(t *testing.T) {
 	work := t.TempDir()
 	secret := "compare-forceremove"
