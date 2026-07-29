@@ -145,8 +145,23 @@ enable-dht=false
 		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 			t.Fatal(err)
 		}
+		if out["result"] == nil {
+			t.Fatalf("system.listMethods should work without token, got %#v", out)
+		}
+
+		// 其它 RPC 仍要求 token。
+		body = `{"jsonrpc":"2.0","id":1,"method":"aria2.getVersion","params":[]}`
+		resp, err = client.Post(base+"/jsonrpc", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		out = nil
+		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+			t.Fatal(err)
+		}
 		if out["error"] == nil {
-			t.Fatalf("expected error, got %#v", out)
+			t.Fatalf("aria2.getVersion without token should fail, got %#v", out)
 		}
 	})
 
