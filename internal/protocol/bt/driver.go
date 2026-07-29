@@ -249,6 +249,13 @@ func (d *Driver) Pause(ctx context.Context, taskID string, force bool) error {
 	state.paused = true
 	state.torrent.DisallowDataDownload()
 	state.torrent.DisallowDataUpload()
+	if force {
+		for _, pc := range state.torrent.PeerConns() {
+			if pc != nil {
+				pc.Close()
+			}
+		}
+	}
 	return nil
 }
 
@@ -534,12 +541,21 @@ func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, 
 	}
 
 	if state.torrent.Info() != nil {
+		info := state.torrent.Info()
 		item.TotalLength = state.torrent.Length()
-		item.PieceLength = int64(state.torrent.Info().PieceLength)
+		item.PieceLength = int64(info.PieceLength)
 		item.Files = torrentFiles(state.torrent)
 		item.Name = chooseName("", state.source.DisplayName, state.torrent.Name())
 		item.InfoHash = state.torrent.InfoHash().HexString()
 		item.Meta = enrichMetaFromTorrent(item.Meta, state.torrent)
+		totalPieces := info.NumPieces()
+		if totalPieces > 0 {
+			if item.Meta == nil {
+				item.Meta = map[string]string{}
+			}
+			item.Meta["bt.totalPieces"] = strconv.Itoa(totalPieces)
+			item.Meta["bitfield"] = torrentCompletedBitfieldHex(state.torrent, totalPieces)
+		}
 	} else {
 		item.Name = chooseName("", state.source.DisplayName, state.torrent.Name())
 		item.TotalLength = state.source.TotalLength
@@ -823,5 +839,20 @@ func peerBitfieldHex(bits *roaring.Bitmap, totalPieces int) string {
 		raw[index/8] |= 1 << (7 - uint(index%8))
 		return true
 	})
+	return hex.EncodeToString(raw)
+}
+
+// torrentCompletedBitfieldHex 将本地已完成 piece 编码为 aria2 tellStatus 的 bitfield 十六进制。
+func torrentCompletedBitfieldHex(tor *torrentlib.Torrent, totalPieces int) string {
+	if tor == nil || totalPieces <= 0 {
+		return ""
+	}
+	raw := make([]byte, (totalPieces+7)/8)
+	for pieceIndex := 0; pieceIndex < totalPieces; pieceIndex++ {
+		if !tor.Piece(pieceIndex).State().Complete {
+			continue
+		}
+		raw[pieceIndex/8] |= 1 << (7 - uint(pieceIndex%8))
+	}
 	return hex.EncodeToString(raw)
 }

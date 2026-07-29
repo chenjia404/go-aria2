@@ -91,10 +91,11 @@ func (d *Driver) CanHandle(input task.AddTaskInput) bool {
 func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, error) {
 	_ = ctx
 
-	sourceURL, err := firstHTTPURL(input)
+	sourceURLs, err := collectHTTPURLs(input)
 	if err != nil {
 		return nil, err
 	}
+	sourceURL := sourceURLs[0]
 	name := deriveName(sourceURL, input.Name)
 	outputPath := outputPathFor(input.SaveDir, name)
 	if shouldAutoRenameOnAdd(input.Options, outputPath) {
@@ -113,12 +114,12 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 		Status:   task.StatusWaiting,
 		SaveDir:  input.SaveDir,
 		Files: []task.File{{
-			Index:           0,
+			Index:           1,
 			Path:            outputPath,
 			Length:          0,
 			CompletedLength: 0,
 			Selected:        true,
-			URIs:            []string{sourceURL},
+			URIs:            append([]string(nil), sourceURLs...),
 		}},
 		Options: cloneMap(input.Options),
 		Meta:    cloneMeta(input.Meta, sourceURL, outputPath),
@@ -833,13 +834,36 @@ func (d *Driver) pauseAfterCancel(taskID string) {
 	})
 }
 
-func firstHTTPURL(input task.AddTaskInput) (string, error) {
+func collectHTTPURLs(input task.AddTaskInput) ([]string, error) {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(input.URIs)+1)
 	for _, raw := range append([]string{input.URI}, input.URIs...) {
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "http://") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "https://") {
-			return raw, nil
+		uri := strings.TrimSpace(raw)
+		if uri == "" {
+			continue
 		}
+		lower := strings.ToLower(uri)
+		if !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://") {
+			continue
+		}
+		if _, ok := seen[uri]; ok {
+			continue
+		}
+		seen[uri] = struct{}{}
+		out = append(out, uri)
 	}
-	return "", fmt.Errorf("missing http/https URL")
+	if len(out) == 0 {
+		return nil, fmt.Errorf("missing http/https URL")
+	}
+	return out, nil
+}
+
+func firstHTTPURL(input task.AddTaskInput) (string, error) {
+	urls, err := collectHTTPURLs(input)
+	if err != nil {
+		return "", err
+	}
+	return urls[0], nil
 }
 
 func deriveName(rawURL, explicit string) string {

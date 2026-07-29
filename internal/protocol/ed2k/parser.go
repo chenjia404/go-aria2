@@ -60,7 +60,7 @@ func parseLink(raw string) (*link, error) {
 
 func toTaskFile(item *link) task.File {
 	return task.File{
-		Index:           0,
+		Index:           1,
 		Path:            item.Name,
 		Length:          item.Size,
 		CompletedLength: 0,

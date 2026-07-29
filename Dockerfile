@@ -30,11 +30,11 @@ COPY --from=builder /out/go-aria2 /usr/local/bin/go-aria2
 USER goaria2
 
 # 常用暴露端口：
-# 16800/tcp JSON-RPC
+# 6800/tcp JSON-RPC (aria2 默认端口)
 # 6881/tcp,6881/udp BitTorrent
 # 4662/tcp ED2K
 # 4661/udp ED2K/Kad
-EXPOSE 16800/tcp 6881/tcp 6881/udp 4662/tcp 4661/udp
+EXPOSE 6800/tcp 6881/tcp 6881/udp 4662/tcp 4661/udp
 
 VOLUME ["/config", "/data", "/downloads"]
 
