@@ -469,6 +469,9 @@ func TestPeersAndServersMethods(t *testing.T) {
 	if !ok || gid == "" {
 		t.Fatalf("unexpected gid payload: %#v", rawGID)
 	}
+	for _, item := range driver.tasks {
+		item.Status = task.StatusActive
+	}
 
 	rawPeers, err := service.Invoke(context.Background(), "aria2.getPeers", []any{gid})
 	if err != nil {

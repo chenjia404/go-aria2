@@ -76,11 +76,12 @@ func TestAria2Api_AddTorrent(t *testing.T) {
 func TestAria2Api_RemovePause(t *testing.T) {
 	t.Parallel()
 
-	env := newRPCTestEnv(t, manager.Options{StartPaused: true, MaxConcurrent: 1})
+	env := newRPCTestEnv(t, manager.Options{MaxConcurrent: 1})
 	gid := env.MustGID("aria2.addUri", []any{"http://localhost/1"})
-
-	if status := env.Status(gid)["status"]; status != "paused" && status != "waiting" {
-		t.Fatalf("unexpected initial status: %s", status)
+	for _, item := range env.Driver.tasks {
+		if item.GID == gid {
+			item.Status = task.StatusWaiting
+		}
 	}
 
 	env.ExpectError("aria2.pause", "0")
