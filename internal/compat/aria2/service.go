@@ -42,6 +42,7 @@ func NewService(mgr *manager.Manager, rpcSecret string) *Service {
 		"aria2.removeDownloadResult",
 		"aria2.purgeDownloadResult",
 		"aria2.shutdown",
+		"aria2.forceShutdown",
 		"aria2.tellStatus",
 		"aria2.tellActive",
 		"aria2.tellWaiting",
@@ -141,8 +142,8 @@ func (s *Service) invokeWithoutAuth(ctx context.Context, method string, params [
 		return s.removeDownloadResult(ctx, params)
 	case "aria2.purgeDownloadResult":
 		return s.purgeDownloadResult(ctx)
-	case "aria2.shutdown":
-		return s.shutdown(ctx, params)
+	case "aria2.shutdown", "aria2.forceShutdown":
+		return s.shutdown(ctx, params, method == "aria2.forceShutdown")
 	case "aria2.tellStatus":
 		return s.tellStatus(ctx, params)
 	case "aria2.tellActive":
@@ -364,10 +365,9 @@ func (s *Service) saveSession(ctx context.Context, params []any) (any, error) {
 	return "OK", nil
 }
 
-func (s *Service) shutdown(ctx context.Context, params []any) (any, error) {
+func (s *Service) shutdown(ctx context.Context, params []any, force bool) (any, error) {
 	_ = ctx
-	force := false
-	if len(params) > 0 {
+	if !force && len(params) > 0 {
 		switch value := params[0].(type) {
 		case bool:
 			force = value
