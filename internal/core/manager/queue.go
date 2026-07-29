@@ -215,7 +215,7 @@ func resolveQueueIndex(currentIdx, queueLen, pos int, how string) (int, error) {
 	case "POS_CUR":
 		return clampQueueIndex(currentIdx+pos, queueLen), nil
 	case "POS_END":
-		return clampQueueIndex(queueLen-1-pos, queueLen), nil
+		return clampQueueIndex(queueLen-1+pos, queueLen), nil
 	default:
 		return 0, fmt.Errorf("unknown position mode: %s", how)
 	}
