@@ -1280,6 +1280,18 @@ func newByteLimiter(rate int64) *byteLimiter {
 	}
 }
 
+func (l *byteLimiter) setRate(rate int64) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.rate = rate
+	if rate > 0 && l.tokens > float64(rate) {
+		l.tokens = float64(rate)
+	}
+}
+
 func (l *byteLimiter) Wait(ctx context.Context, n int64) error {
 	if l == nil || n <= 0 {
 		return nil
