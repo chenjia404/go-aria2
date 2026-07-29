@@ -22,17 +22,19 @@ func runMigrate(args []string) error {
 	var (
 		configPath  string
 		sessionPath string
+		rpcEndpoint string
 		strict      bool
 	)
 	fs.StringVar(&configPath, "conf", "aria2.conf", "path to aria2 style config file")
 	fs.StringVar(&sessionPath, "session", "", "aria2 save-session file path")
+	fs.StringVar(&rpcEndpoint, "rpc-endpoint", "", "import tasks from running aria2 JSON-RPC endpoint")
 	fs.BoolVar(&strict, "strict", false, "verify BT pieces strictly before returning")
 
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if sessionPath == "" {
-		return fmt.Errorf("session file is required")
+	if sessionPath == "" && rpcEndpoint == "" {
+		return fmt.Errorf("either session file or --rpc-endpoint is required")
 	}
 
 	cfg, err := loadConfig(configPath)
@@ -53,15 +55,28 @@ func runMigrate(args []string) error {
 		logger.Printf("config warning: %s", warning)
 	}
 
-	if _, err := os.Stat(sessionPath); err != nil {
-		return err
+	ctx := context.Background()
+	var parsed []aria2session.Aria2SessionTask
+	if rpcEndpoint != "" {
+		logger.Printf("[INFO] Fetching tasks from aria2 RPC: %s", rpcEndpoint)
+		var err error
+		parsed, err = aria2session.FetchAria2SessionTasksFromRPC(ctx, rpcEndpoint, cfg.RPCSecret)
+		if err != nil {
+			return err
+		}
+		logger.Printf("[INFO] Fetched %d tasks from aria2 RPC", len(parsed))
+	} else {
+		if _, err := os.Stat(sessionPath); err != nil {
+			return err
+		}
+		logger.Printf("[INFO] Reading session file: %s", sessionPath)
+		var err error
+		parsed, err = aria2session.ParseAria2Session(sessionPath)
+		if err != nil {
+			return err
+		}
+		logger.Printf("[INFO] Parsed %d session tasks", len(parsed))
 	}
-	logger.Printf("[INFO] Reading session file: %s", sessionPath)
-	parsed, err := aria2session.ParseAria2Session(sessionPath)
-	if err != nil {
-		return err
-	}
-	logger.Printf("[INFO] Parsed %d session tasks", len(parsed))
 
 	store := session.NewFileStore(runtimePaths.sessionPath)
 	mgr := manager.New(manager.Options{
@@ -113,7 +128,6 @@ func runMigrate(args []string) error {
 		MaxOverallDownloadLimit: cfg.MaxOverallDownloadLimit,
 	}))
 
-	ctx := context.Background()
 	if err := mgr.LoadSession(ctx); err != nil {
 		return err
 	}

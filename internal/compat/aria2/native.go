@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/chenjia404/go-aria2/internal/core/task"
+	"github.com/chenjia404/go-aria2/internal/migrate/aria2session"
 	"github.com/chenjia404/go-aria2/internal/rpc/jsonrpc"
 )
 
@@ -24,6 +25,7 @@ var nativeMethodNames = []string{
 	"native.getTaskMeta",
 	"native.exportSession",
 	"native.importSession",
+	"native.importFromAria2RPC",
 	"native.getProtocolStats",
 	"native.getBtTrackers",
 	"native.getBtPeers",
@@ -50,6 +52,8 @@ func (s *Service) invokeNative(ctx context.Context, method string, params []any)
 		return s.saveSession(ctx, params)
 	case "native.importSession":
 		return s.nativeImportSession(ctx, params)
+	case "native.importFromAria2RPC":
+		return s.nativeImportFromAria2RPC(ctx, params)
 	case "native.getProtocolStats":
 		return s.nativeGetProtocolStats(), nil
 	case "native.getBtTrackers":
@@ -125,6 +129,25 @@ func (s *Service) nativeImportSession(ctx context.Context, params []any) (any, e
 		return nil, err
 	}
 	return map[string]any{"imported": count}, nil
+}
+
+func (s *Service) nativeImportFromAria2RPC(ctx context.Context, params []any) (any, error) {
+	endpoint, err := stringParam(params, 0, "endpoint")
+	if err != nil {
+		return nil, err
+	}
+	secret := s.rpcSecret
+	if len(params) > 1 {
+		if value, ok := params[1].(string); ok {
+			secret = value
+		}
+	}
+	importer := &aria2session.Importer{Manager: s.manager}
+	imported, err := aria2session.ImportFromAria2RPC(ctx, importer, endpoint, secret)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"imported": len(imported)}, nil
 }
 
 func (s *Service) nativeGetProtocolStats() map[string]any {
