@@ -46,13 +46,15 @@ func registerProtocolDrivers(mgr *manager.Manager, cfg *config.Config, paths run
 	out := &registeredDrivers{BT: btDriver}
 	if cfg.ED2KEnable {
 		ed2kDriver, err := ed2k.New(ed2k.Options{
-			ListenPort:   cfg.ED2KListenPort,
-			UDPPort:      cfg.ED2KServerPort,
-			EnableDHT:    cfg.ED2KKadEnable,
-			EnableServer: cfg.ED2KServerEnable,
-			UploadSlots:  cfg.ED2KUploadSlots,
-			MaxSources:   cfg.ED2KMaxSources,
-			StatePath:    paths.ed2kStatePath,
+			ListenPort:           cfg.ED2KListenPort,
+			UDPPort:              cfg.ED2KServerPort,
+			EnableDHT:            cfg.ED2KKadEnable,
+			EnableServer:         cfg.ED2KServerEnable,
+			UploadSlots:          cfg.ED2KUploadSlots,
+			MaxSources:           cfg.ED2KMaxSources,
+			StatePath:            paths.ed2kStatePath,
+			AICHEnable:           cfg.ED2KAICHEnable,
+			SourceExchangeEnable: cfg.ED2KSourceExchange,
 		})
 		if err != nil {
 			btDriver.Close()

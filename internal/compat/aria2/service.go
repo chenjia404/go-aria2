@@ -2,6 +2,7 @@ package aria2
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -41,6 +42,7 @@ func NewService(mgr *manager.Manager, rpcSecret string) *Service {
 		"aria2.removeDownloadResult",
 		"aria2.purgeDownloadResult",
 		"aria2.shutdown",
+		"aria2.forceShutdown",
 		"aria2.tellStatus",
 		"aria2.tellActive",
 		"aria2.tellWaiting",
@@ -101,6 +103,10 @@ func (s *Service) SessionInfo() map[string]any {
 
 // Invoke ????? aria2 ???????????????? rpc-secret ????????
 func (s *Service) Invoke(ctx context.Context, method string, params []any) (any, error) {
+	if method == "system.listMethods" || method == "system.listNotifications" || method == "system.multicall" {
+		return s.invokeWithoutAuth(ctx, method, params)
+	}
+
 	authorizedParams, err := s.authorize(params)
 	if err != nil {
 		return nil, err
@@ -136,8 +142,8 @@ func (s *Service) invokeWithoutAuth(ctx context.Context, method string, params [
 		return s.removeDownloadResult(ctx, params)
 	case "aria2.purgeDownloadResult":
 		return s.purgeDownloadResult(ctx)
-	case "aria2.shutdown":
-		return s.shutdown(ctx, params)
+	case "aria2.shutdown", "aria2.forceShutdown":
+		return s.shutdown(ctx, params, method == "aria2.forceShutdown")
 	case "aria2.tellStatus":
 		return s.tellStatus(ctx, params)
 	case "aria2.tellActive":
@@ -216,15 +222,24 @@ func (s *Service) addURI(ctx context.Context, params []any) (any, error) {
 		uris = append(uris, uri)
 	}
 
+	position := -1
+	rest := params[1:]
+	if pos, ok, trimmed := parseOptionalTrailingPosition(rest); ok {
+		position = pos
+		rest = trimmed
+	}
+
 	options := map[string]string{}
-	if len(params) >= 2 {
-		options = parseOptions(params[1])
+	if len(rest) >= 1 {
+		options = parseOptions(rest[0])
 	}
 
 	input := task.AddTaskInput{
-		URIs:    uris,
-		SaveDir: options["dir"],
-		Options: options,
+		URIs:          uris,
+		SaveDir:       options["dir"],
+		Name:          options["out"],
+		Options:       options,
+		QueuePosition: position,
 	}
 	created, err := s.manager.Add(ctx, input)
 	if err != nil {
@@ -234,16 +249,18 @@ func (s *Service) addURI(ctx context.Context, params []any) (any, error) {
 }
 
 func (s *Service) addTorrent(ctx context.Context, params []any) (any, error) {
-	payload, uris, options, err := parseAddTorrentParams(params)
+	payload, uris, options, position, err := parseAddTorrentParams(params)
 	if err != nil {
 		return nil, err
 	}
 
 	created, err := s.manager.Add(ctx, task.AddTaskInput{
-		Torrent: payload,
-		URIs:    uris,
-		SaveDir: options["dir"],
-		Options: options,
+		Torrent:       payload,
+		URIs:          uris,
+		SaveDir:       options["dir"],
+		Name:          options["out"],
+		Options:       options,
+		QueuePosition: position,
 	})
 	if err != nil {
 		return nil, err
@@ -348,10 +365,9 @@ func (s *Service) saveSession(ctx context.Context, params []any) (any, error) {
 	return "OK", nil
 }
 
-func (s *Service) shutdown(ctx context.Context, params []any) (any, error) {
+func (s *Service) shutdown(ctx context.Context, params []any, force bool) (any, error) {
 	_ = ctx
-	force := false
-	if len(params) > 0 {
+	if !force && len(params) > 0 {
 		switch value := params[0].(type) {
 		case bool:
 			force = value
@@ -540,7 +556,8 @@ func (s *Service) changeOption(ctx context.Context, params []any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return updated.GID, nil
+	_ = updated
+	return "OK", nil
 }
 
 func (s *Service) getGlobalOption() map[string]string {
@@ -575,22 +592,45 @@ func (s *Service) multicall(ctx context.Context, params []any) (any, error) {
 	for _, rawCall := range rawCalls {
 		call, ok := rawCall.(map[string]any)
 		if !ok {
-			return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "invalid multicall item")
+			out = append(out, multicallError(jsonrpc.CodeInvalidParams, "invalid multicall item"))
+			continue
 		}
 
 		method, ok := call["methodName"].(string)
 		if !ok || method == "" {
-			return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "methodName is required")
+			out = append(out, multicallError(jsonrpc.CodeInvalidParams, "methodName is required"))
+			continue
 		}
 
 		callParams, _ := call["params"].([]any)
-		result, err := s.invokeWithoutAuth(ctx, method, callParams)
+		authorizedParams, err := s.authorize(callParams)
 		if err != nil {
-			return nil, err
+			out = append(out, multicallErrorFromErr(err))
+			continue
+		}
+		result, err := s.invokeWithoutAuth(ctx, method, authorizedParams)
+		if err != nil {
+			out = append(out, multicallErrorFromErr(err))
+			continue
 		}
 		out = append(out, []any{result})
 	}
 	return out, nil
+}
+
+func multicallError(code int, message string) map[string]any {
+	return map[string]any{
+		"code":    code,
+		"message": message,
+	}
+}
+
+func multicallErrorFromErr(err error) map[string]any {
+	var rpcErr *jsonrpc.RPCError
+	if errors.As(err, &rpcErr) {
+		return multicallError(rpcErr.Code, rpcErr.Message)
+	}
+	return multicallError(jsonrpc.CodeInternalError, err.Error())
 }
 
 // releaseDate 与构建版本对齐，避免每次 RPC 调用返回值变化（aria2 为固定发布日期）。

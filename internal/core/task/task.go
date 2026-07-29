@@ -67,14 +67,15 @@ type Task struct {
 
 // AddTaskInput 是协议驱动统一接收的新增任务输入。
 type AddTaskInput struct {
-	GID     string
-	URI     string
-	URIs    []string
-	Torrent []byte
-	SaveDir string
-	Name    string
-	Options map[string]string
-	Meta    map[string]string
+	GID           string
+	URI           string
+	URIs          []string
+	Torrent       []byte
+	SaveDir       string
+	Name          string
+	Options       map[string]string
+	Meta          map[string]string
+	QueuePosition int // aria2 add* 的 position；<0 表示追加到队尾
 }
 
 // Clone 返回任务的深拷贝，避免跨层共享可变状态。

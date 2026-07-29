@@ -66,6 +66,8 @@ type Manager struct {
 	nextSubID      int
 	subscribers    map[int]chan Event
 
+	numStoppedTotal int
+
 	removeMu    sync.Mutex
 	removeLocks map[string]*sync.Mutex
 }
@@ -159,6 +161,12 @@ func (m *Manager) Add(ctx context.Context, input task.AddTaskInput) (*task.Task,
 	m.tasks[created.ID] = created
 	m.driverByTaskID[created.ID] = driver
 	m.mu.Unlock()
+
+	if input.QueuePosition >= 0 {
+		if err := m.insertTaskAtQueuePosition(created.GID, input.QueuePosition); err != nil {
+			return nil, err
+		}
+	}
 
 	addPaused := m.startPaused || parsePauseOption(input.Options)
 	if addPaused {
@@ -472,12 +480,12 @@ func (m *Manager) TellActive(ctx context.Context) ([]*task.Task, error) {
 
 // TellWaiting 返回 waiting �?paused 任务列表，支持分页�?
 func (m *Manager) TellWaiting(ctx context.Context, offset, limit int) ([]*task.Task, error) {
-	return m.paginateStatus(ctx, offset, limit, task.StatusWaiting)
+	return m.paginateQueueStatus(ctx, offset, limit, task.StatusWaiting, task.StatusPaused)
 }
 
 // TellStopped 返回 stopped 任务列表，支持分页�?
 func (m *Manager) TellStopped(ctx context.Context, offset, limit int) ([]*task.Task, error) {
-	return m.paginateStatus(ctx, offset, limit, task.StatusComplete, task.StatusError, task.StatusRemoved)
+	return m.paginateStopped(ctx, offset, limit, task.StatusComplete, task.StatusError, task.StatusRemoved)
 }
 
 // GetFiles 返回任务的文件列表�?
@@ -718,16 +726,15 @@ func (m *Manager) GetGlobalStat() GlobalStat {
 		switch item.Status {
 		case task.StatusActive:
 			stat.NumActive++
-		case task.StatusWaiting:
+		case task.StatusWaiting, task.StatusPaused:
 			stat.NumWaiting++
-		case task.StatusPaused:
-			// aria2 不把 paused 计入 numWaiting
 		case task.StatusComplete, task.StatusError, task.StatusRemoved:
 			stat.NumStopped++
 		}
 		stat.DownloadSpeed += item.DownloadSpeed
 		stat.UploadSpeed += item.UploadSpeed
 	}
+	stat.NumStoppedTotal = m.numStoppedTotal
 	return stat
 }
 
@@ -1129,6 +1136,9 @@ func (m *Manager) storeTask(updated *task.Task, driver Driver) *task.Task {
 	defer m.mu.Unlock()
 
 	if existing := m.tasks[cloned.ID]; existing != nil {
+		if !isStoppedStatus(existing.Status) && isStoppedStatus(cloned.Status) {
+			m.numStoppedTotal++
+		}
 		if cloned.GID == "" {
 			cloned.GID = existing.GID
 		}
@@ -1144,6 +1154,9 @@ func (m *Manager) storeTask(updated *task.Task, driver Driver) *task.Task {
 		if cloned.CreatedAt.IsZero() {
 			cloned.CreatedAt = existing.CreatedAt
 		}
+		if cloned.UpdatedAt.IsZero() {
+			cloned.UpdatedAt = existing.UpdatedAt
+		}
 		if len(cloned.Files) == 0 {
 			cloned.Files = task.CloneFiles(existing.Files)
 		}
@@ -1156,13 +1169,31 @@ func (m *Manager) storeTask(updated *task.Task, driver Driver) *task.Task {
 		if len(cloned.Meta) == 0 {
 			cloned.Meta = cloneOptions(existing.Meta)
 		}
+		if existing.Status == cloned.Status &&
+			existing.CompletedLength == cloned.CompletedLength &&
+			existing.TotalLength == cloned.TotalLength &&
+			existing.ErrorCode == cloned.ErrorCode &&
+			existing.ErrorMessage == cloned.ErrorMessage {
+			cloned.UpdatedAt = existing.UpdatedAt
+		}
 	}
-	cloned.UpdatedAt = time.Now()
+	if cloned.UpdatedAt.IsZero() {
+		cloned.UpdatedAt = time.Now()
+	}
 	m.tasks[cloned.ID] = cloned
 	if driver != nil {
 		m.driverByTaskID[cloned.ID] = driver
 	}
 	return cloned.Clone()
+}
+
+func isStoppedStatus(status task.Status) bool {
+	switch status {
+	case task.StatusComplete, task.StatusError, task.StatusRemoved:
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *Manager) snapshotTasks() []*task.Task {

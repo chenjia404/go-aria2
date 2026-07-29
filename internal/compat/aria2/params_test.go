@@ -44,18 +44,18 @@ func TestParseAddTorrentParams(t *testing.T) {
 	payload := []byte("torrent-data")
 	encoded := base64.StdEncoding.EncodeToString(payload)
 
-	twoArg, uris, opts, err := parseAddTorrentParams([]any{
+	twoArg, uris, opts, pos, err := parseAddTorrentParams([]any{
 		encoded,
 		map[string]any{"dir": "/tmp", "pause": true},
 	})
 	if err != nil {
 		t.Fatalf("two-arg parse failed: %v", err)
 	}
-	if string(twoArg) != string(payload) || len(uris) != 0 || opts["dir"] != "/tmp" || opts["pause"] != "true" {
-		t.Fatalf("unexpected two-arg result: payload=%q uris=%v opts=%v", twoArg, uris, opts)
+	if string(twoArg) != string(payload) || len(uris) != 0 || opts["dir"] != "/tmp" || opts["pause"] != "true" || pos != -1 {
+		t.Fatalf("unexpected two-arg result: payload=%q uris=%v opts=%v pos=%d", twoArg, uris, opts, pos)
 	}
 
-	threeArgNull, uris2, opts2, err := parseAddTorrentParams([]any{
+	threeArgNull, uris2, opts2, pos2, err := parseAddTorrentParams([]any{
 		encoded,
 		nil,
 		map[string]any{"dir": "/data"},
@@ -63,11 +63,11 @@ func TestParseAddTorrentParams(t *testing.T) {
 	if err != nil {
 		t.Fatalf("three-arg null parse failed: %v", err)
 	}
-	if string(threeArgNull) != string(payload) || len(uris2) != 0 || opts2["dir"] != "/data" {
-		t.Fatalf("unexpected three-arg null result: payload=%q uris=%v opts=%v", threeArgNull, uris2, opts2)
+	if string(threeArgNull) != string(payload) || len(uris2) != 0 || opts2["dir"] != "/data" || pos2 != -1 {
+		t.Fatalf("unexpected three-arg null result: payload=%q uris=%v opts=%v pos=%d", threeArgNull, uris2, opts2, pos2)
 	}
 
-	threeArgURIs, uris3, opts3, err := parseAddTorrentParams([]any{
+	threeArgURIs, uris3, opts3, pos3, err := parseAddTorrentParams([]any{
 		encoded,
 		[]any{"http://seed.example/a", "http://seed.example/b"},
 		map[string]any{"out": "file.bin"},
@@ -75,8 +75,20 @@ func TestParseAddTorrentParams(t *testing.T) {
 	if err != nil {
 		t.Fatalf("three-arg uris parse failed: %v", err)
 	}
-	if len(uris3) != 2 || opts3["out"] != "file.bin" {
-		t.Fatalf("unexpected three-arg uris result: uris=%v opts=%v", uris3, opts3)
+	if len(uris3) != 2 || opts3["out"] != "file.bin" || pos3 != -1 {
+		t.Fatalf("unexpected three-arg uris result: uris=%v opts=%v pos=%d", uris3, opts3, pos3)
 	}
 	_ = threeArgURIs
+
+	withPosition, _, opts4, pos4, err := parseAddTorrentParams([]any{
+		encoded,
+		map[string]any{"dir": "/queue"},
+		0,
+	})
+	if err != nil {
+		t.Fatalf("position parse failed: %v", err)
+	}
+	if string(withPosition) != string(payload) || opts4["dir"] != "/queue" || pos4 != 0 {
+		t.Fatalf("unexpected position result: opts=%v pos=%d", opts4, pos4)
+	}
 }

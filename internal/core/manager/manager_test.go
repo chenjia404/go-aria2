@@ -478,13 +478,13 @@ func TestManagerAria2QueueSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tellWaiting: %v", err)
 	}
-	if len(waitingList) != 1 || waitingList[0].GID != waitingTask.GID {
-		t.Fatalf("tellWaiting should only include queued tasks: %#v", waitingList)
+	if len(waitingList) != 2 {
+		t.Fatalf("tellWaiting should include waiting and paused tasks: %#v", waitingList)
 	}
 
 	stat := mgr.GetGlobalStat()
-	if stat.NumWaiting != 1 {
-		t.Fatalf("numWaiting should exclude paused, got %d", stat.NumWaiting)
+	if stat.NumWaiting != 2 {
+		t.Fatalf("numWaiting should include paused, got %d", stat.NumWaiting)
 	}
 
 	if err := mgr.UnpauseAll(context.Background()); err != nil {
