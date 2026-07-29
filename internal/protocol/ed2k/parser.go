@@ -2,6 +2,7 @@ package ed2k
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	goed2k "github.com/monkeyWie/goed2k"
@@ -44,17 +45,26 @@ func parseLink(raw string) (*link, error) {
 }
 
 // parseLinkExtras 从 ed2k 文件链接尾部提取 goed2k.ParseEMuleLink 不解析的扩展段（h=、s=）。
+// 在原始 URI 上按 | 切分，仅对扩展值做解码，避免整段 QueryUnescape 破坏段内转义。
 func parseLinkExtras(raw string) (aich string, sources []string) {
 	parts := strings.Split(raw, "|")
 	for _, part := range parts[5:] {
 		switch {
 		case strings.HasPrefix(part, "h="):
-			aich = strings.TrimPrefix(part, "h=")
+			aich = decodeLinkExtraValue(strings.TrimPrefix(part, "h="))
 		case strings.HasPrefix(part, "s="):
-			sources = append(sources, strings.TrimPrefix(part, "s="))
+			sources = append(sources, decodeLinkExtraValue(strings.TrimPrefix(part, "s=")))
 		}
 	}
 	return aich, sources
+}
+
+func decodeLinkExtraValue(v string) string {
+	decoded, err := url.QueryUnescape(v)
+	if err != nil {
+		return v
+	}
+	return decoded
 }
 
 func toTaskFile(item *link) task.File {
