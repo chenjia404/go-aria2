@@ -14,7 +14,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/go-aria2 ./cmd/go-aria2
 
 # Runtime: 只保留运行 go-aria2 所需的最小环境。
-FROM alpine:3
+FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates tzdata
 
