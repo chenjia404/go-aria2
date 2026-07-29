@@ -638,9 +638,9 @@ const releaseDate = "2026-07-29"
 
 func (s *Service) getVersion() map[string]any {
 	return map[string]any{
-		"version":            "0.1.0",
+		"version":            "0.1.1",
 		"enabledFeatures":    []string{"BitTorrent", "ED2K", "HTTP", "JSON-RPC", "XML-RPC", "WebSocket"},
-		"fullVersion":        "github.com/chenjia404/go-aria2/0.1.0",
+		"fullVersion":        "github.com/chenjia404/go-aria2/0.1.1",
 		"releaseDate":        releaseDate,
 		"organization":       "github.com/chenjia404/go-aria2",
 		"copyright":          "github.com/chenjia404/go-aria2 contributors",
