@@ -28,6 +28,7 @@ type Options struct {
 	HTTPProxy               string
 	HTTPSProxy              string
 	AllProxy                string
+	NoProxy                 string
 	CheckCertificate        bool
 	Split                   int
 	MaxConnectionPerServer  int
@@ -657,7 +658,36 @@ func (d *Driver) downloadChunked(ctx context.Context, taskID string, st *state, 
 }
 
 func (d *Driver) downloadRange(ctx context.Context, st *state, file *os.File, start, end int64, taskID string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, st.sourceURL, nil)
+	urls := mirrorURLs(st)
+	if len(urls) == 0 {
+		return fmt.Errorf("missing download URL")
+	}
+
+	startIdx := st.sourceIndex
+	if startIdx < 0 || startIdx >= len(urls) {
+		startIdx = 0
+	}
+
+	var lastErr error
+	for i := startIdx; i < len(urls); i++ {
+		st.setActiveMirror(i)
+		err := d.downloadRangeFromURL(ctx, st, file, start, end, taskID, st.sourceURL)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("all mirrors failed")
+	}
+	return lastErr
+}
+
+func (d *Driver) downloadRangeFromURL(ctx context.Context, st *state, file *os.File, start, end int64, taskID string, sourceURL string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
 	if err != nil {
 		return err
 	}
@@ -996,6 +1026,9 @@ func buildTaskClient(base Options, opts map[string]string) *http.Client {
 	}
 	if value := resolveStringOption(opts, "all-proxy", resolved.AllProxy); value != "" {
 		resolved.AllProxy = value
+	}
+	if value := resolveStringOption(opts, "no-proxy", resolved.NoProxy); value != "" {
+		resolved.NoProxy = value
 	}
 	if value, ok := opts["check-certificate"]; ok {
 		if parsed, err := parseBoolOption(value); err == nil {
@@ -1338,6 +1371,20 @@ func newID() string {
 }
 
 func proxyFunc(opts Options) func(*http.Request) (*url.URL, error) {
+	base := baseProxyFunc(opts)
+	noProxyPatterns := parseNoProxyList(opts.NoProxy)
+	if len(noProxyPatterns) == 0 {
+		return base
+	}
+	return func(req *http.Request) (*url.URL, error) {
+		if hostBypassesProxy(req.URL.Hostname(), noProxyPatterns) {
+			return nil, nil
+		}
+		return base(req)
+	}
+}
+
+func baseProxyFunc(opts Options) func(*http.Request) (*url.URL, error) {
 	if opts.AllProxy != "" {
 		proxyURL, err := url.Parse(opts.AllProxy)
 		if err == nil {

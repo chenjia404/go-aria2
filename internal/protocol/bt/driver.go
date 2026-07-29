@@ -30,6 +30,7 @@ type Options struct {
 	ListenPort int
 	EnableDHT  bool
 	MaxPeers   int
+	Crypto     CryptoOptions
 }
 
 type state struct {
@@ -70,6 +71,7 @@ func buildTorrentConfig(opts Options, listenPort int) *torrentlib.ClientConfig {
 		cfg.TorrentPeersHighWater = opts.MaxPeers * 4
 		cfg.TorrentPeersLowWater = max(20, opts.MaxPeers/2)
 	}
+	applyBTCryptoOptions(cfg, opts.Crypto)
 	return cfg
 }
 

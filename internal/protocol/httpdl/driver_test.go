@@ -362,3 +362,97 @@ func TestDriverFailoverToMirrorURL(t *testing.T) {
 		t.Fatalf("unexpected payload: %q", data)
 	}
 }
+
+func TestChunkedDownloadFailoverToMirror(t *testing.T) {
+	t.Parallel()
+
+	payload := make([]byte, 8192)
+	for i := range payload {
+		payload[i] = byte(i % 251)
+	}
+
+	badServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer badServer.Close()
+
+	goodServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodHead:
+			w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+			w.Header().Set("Accept-Ranges", "bytes")
+			return
+		case http.MethodGet:
+			rangeHeader := r.Header.Get("Range")
+			if rangeHeader == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			var start, end int
+			if _, err := fmt.Sscanf(rangeHeader, "bytes=%d-%d", &start, &end); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if start < 0 || end < start || end >= len(payload) {
+				w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+				return
+			}
+			segment := payload[start : end+1]
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, len(payload)))
+			w.Header().Set("Content-Length", strconv.Itoa(len(segment)))
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write(segment)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer goodServer.Close()
+
+	driver := New(Options{UserAgent: "test-agent", Split: 4})
+	created, err := driver.Add(context.Background(), task.AddTaskInput{
+		URIs: []string{
+			badServer.URL + "/missing.bin",
+			goodServer.URL + "/file.bin",
+		},
+		SaveDir: t.TempDir(),
+		Name:    "file.bin",
+		Options: map[string]string{"split": "4"},
+	})
+	if err != nil {
+		t.Fatalf("Add returned error: %v", err)
+	}
+
+	if err := driver.Start(context.Background(), created.ID); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := driver.TellStatus(context.Background(), created.ID)
+		if err != nil {
+			t.Fatalf("TellStatus returned error: %v", err)
+		}
+		if status.Status == task.StatusComplete {
+			break
+		}
+		if status.Status == task.StatusError {
+			t.Fatalf("chunked download failed before mirror failover: %+v", status)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	status, err := driver.TellStatus(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("TellStatus returned error: %v", err)
+	}
+	if status.Status != task.StatusComplete {
+		t.Fatalf("expected complete after chunked mirror failover, got %+v", status)
+	}
+	data, err := os.ReadFile(created.Files[0].Path)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	if string(data) != string(payload) {
+		t.Fatalf("unexpected chunked payload length=%d", len(data))
+	}
+}
