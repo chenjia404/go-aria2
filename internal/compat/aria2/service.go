@@ -2,6 +2,7 @@ package aria2
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -101,6 +102,10 @@ func (s *Service) SessionInfo() map[string]any {
 
 // Invoke ????? aria2 ???????????????? rpc-secret ????????
 func (s *Service) Invoke(ctx context.Context, method string, params []any) (any, error) {
+	if method == "system.multicall" {
+		return s.invokeWithoutAuth(ctx, method, params)
+	}
+
 	authorizedParams, err := s.authorize(params)
 	if err != nil {
 		return nil, err
@@ -587,22 +592,45 @@ func (s *Service) multicall(ctx context.Context, params []any) (any, error) {
 	for _, rawCall := range rawCalls {
 		call, ok := rawCall.(map[string]any)
 		if !ok {
-			return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "invalid multicall item")
+			out = append(out, multicallError(jsonrpc.CodeInvalidParams, "invalid multicall item"))
+			continue
 		}
 
 		method, ok := call["methodName"].(string)
 		if !ok || method == "" {
-			return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "methodName is required")
+			out = append(out, multicallError(jsonrpc.CodeInvalidParams, "methodName is required"))
+			continue
 		}
 
 		callParams, _ := call["params"].([]any)
-		result, err := s.invokeWithoutAuth(ctx, method, callParams)
+		authorizedParams, err := s.authorize(callParams)
 		if err != nil {
-			return nil, err
+			out = append(out, multicallErrorFromErr(err))
+			continue
+		}
+		result, err := s.invokeWithoutAuth(ctx, method, authorizedParams)
+		if err != nil {
+			out = append(out, multicallErrorFromErr(err))
+			continue
 		}
 		out = append(out, []any{result})
 	}
 	return out, nil
+}
+
+func multicallError(code int, message string) map[string]any {
+	return map[string]any{
+		"code":    code,
+		"message": message,
+	}
+}
+
+func multicallErrorFromErr(err error) map[string]any {
+	var rpcErr *jsonrpc.RPCError
+	if errors.As(err, &rpcErr) {
+		return multicallError(rpcErr.Code, rpcErr.Message)
+	}
+	return multicallError(jsonrpc.CodeInternalError, err.Error())
 }
 
 // releaseDate 与构建版本对齐，避免每次 RPC 调用返回值变化（aria2 为固定发布日期）。
