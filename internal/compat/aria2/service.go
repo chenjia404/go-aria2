@@ -14,11 +14,12 @@ import (
 
 // Service ??? aria2 ???? JSON-RPC ????????????
 type Service struct {
-	manager   *manager.Manager
-	rpcSecret string
-	methods   []string
-	startedAt time.Time
-	sessionID string
+	manager    *manager.Manager
+	rpcSecret  string
+	methods    []string
+	startedAt  time.Time
+	sessionID  string
+	onShutdown func(force bool)
 }
 
 // NewService ???? aria2 ?????????????
@@ -34,6 +35,8 @@ func NewService(mgr *manager.Manager, rpcSecret string) *Service {
 		"aria2.unpauseAll",
 		"aria2.unpause",
 		"aria2.removeDownloadResult",
+		"aria2.purgeDownloadResult",
+		"aria2.shutdown",
 		"aria2.tellStatus",
 		"aria2.tellActive",
 		"aria2.tellWaiting",
@@ -61,6 +64,11 @@ func NewService(mgr *manager.Manager, rpcSecret string) *Service {
 		startedAt: time.Now(),
 		sessionID: newSessionID(),
 	}
+}
+
+// SetShutdownHook 注册 aria2.shutdown 触发时的回调（由 daemon 注入优雅退出逻辑）。
+func (s *Service) SetShutdownHook(fn func(force bool)) {
+	s.onShutdown = fn
 }
 
 // VersionInfo 返回与 aria2.getVersion 一致的结构，供 REST 等适配层使用。
@@ -104,6 +112,10 @@ func (s *Service) invokeWithoutAuth(ctx context.Context, method string, params [
 		return s.unpauseAll(ctx)
 	case "aria2.removeDownloadResult":
 		return s.removeDownloadResult(ctx, params)
+	case "aria2.purgeDownloadResult":
+		return s.purgeDownloadResult(ctx)
+	case "aria2.shutdown":
+		return s.shutdown(ctx, params)
 	case "aria2.tellStatus":
 		return s.tellStatus(ctx, params)
 	case "aria2.tellActive":
@@ -263,6 +275,32 @@ func (s *Service) removeDownloadResult(ctx context.Context, params []any) (any, 
 	}
 	if err := s.manager.RemoveDownloadResult(ctx, gid); err != nil {
 		return nil, err
+	}
+	return "OK", nil
+}
+
+func (s *Service) purgeDownloadResult(ctx context.Context) (any, error) {
+	if err := s.manager.PurgeDownloadResult(ctx); err != nil {
+		return nil, err
+	}
+	return "OK", nil
+}
+
+func (s *Service) shutdown(ctx context.Context, params []any) (any, error) {
+	_ = ctx
+	force := false
+	if len(params) > 0 {
+		switch value := params[0].(type) {
+		case bool:
+			force = value
+		case string:
+			force = strings.EqualFold(value, "true") || value == "1"
+		case float64:
+			force = value != 0
+		}
+	}
+	if s.onShutdown != nil {
+		go s.onShutdown(force)
 	}
 	return "OK", nil
 }

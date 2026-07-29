@@ -7,6 +7,22 @@ import (
 	"github.com/chenjia404/go-aria2/internal/core/task"
 )
 
+func TestParseAddInputMagnetWithWebSeeds(t *testing.T) {
+	result, err := parseAddInput(context.Background(), task.AddTaskInput{
+		URIs: []string{
+			"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=demo.iso",
+			"http://seed.example/files/demo.iso",
+			"https://cdn.example/alt/demo.iso",
+		},
+	})
+	if err != nil {
+		t.Fatalf("parseAddInput returned error: %v", err)
+	}
+	if len(result.Spec.Webseeds) != 2 {
+		t.Fatalf("expected 2 web seeds, got %#v", result.Spec.Webseeds)
+	}
+}
+
 func TestParseAddInputMagnet(t *testing.T) {
 	result, err := parseAddInput(context.Background(), task.AddTaskInput{
 		URIs: []string{"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=demo.iso&tr=http://tracker/announce&xl=123"},

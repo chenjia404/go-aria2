@@ -56,6 +56,8 @@ func torrentSpecFromSource(src addSource) (*torrentlib.TorrentSpec, error) {
 }
 
 func parseAddInput(ctx context.Context, input task.AddTaskInput) (*addResult, error) {
+	allURIs := collectInputURIs(input)
+
 	if len(input.Torrent) > 0 {
 		mi, raw, err := loadMetaInfo(input.Torrent)
 		if err != nil {
@@ -65,6 +67,7 @@ func parseAddInput(ctx context.Context, input task.AddTaskInput) (*addResult, er
 		if err != nil {
 			return nil, err
 		}
+		attachWebSeeds(spec, allURIs)
 		return &addResult{
 			Spec: spec,
 			Source: addSource{
@@ -76,7 +79,7 @@ func parseAddInput(ctx context.Context, input task.AddTaskInput) (*addResult, er
 		}, nil
 	}
 
-	for _, rawURI := range append([]string{input.URI}, input.URIs...) {
+	for index, rawURI := range allURIs {
 		uri := strings.TrimSpace(rawURI)
 		if uri == "" {
 			continue
@@ -89,6 +92,7 @@ func parseAddInput(ctx context.Context, input task.AddTaskInput) (*addResult, er
 			if err != nil {
 				return nil, err
 			}
+			attachWebSeeds(spec, allURIs[index+1:])
 			return &addResult{
 				Spec: spec,
 				Source: addSource{
@@ -115,6 +119,7 @@ func parseAddInput(ctx context.Context, input task.AddTaskInput) (*addResult, er
 			if err != nil {
 				return nil, err
 			}
+			attachWebSeeds(spec, allURIs[index+1:])
 			return &addResult{
 				Spec: spec,
 				Source: addSource{
@@ -128,6 +133,45 @@ func parseAddInput(ctx context.Context, input task.AddTaskInput) (*addResult, er
 		}
 	}
 	return nil, fmt.Errorf("unsupported bt input")
+}
+
+func collectInputURIs(input task.AddTaskInput) []string {
+	out := make([]string, 0, len(input.URIs)+1)
+	if strings.TrimSpace(input.URI) != "" {
+		out = append(out, input.URI)
+	}
+	out = append(out, input.URIs...)
+	return out
+}
+
+// attachWebSeeds 将 HTTP(S) 非 .torrent URL 作为 web seed 注入 spec（与 aria2 addTorrent 第二参数一致）。
+func attachWebSeeds(spec *torrentlib.TorrentSpec, uris []string) {
+	if spec == nil {
+		return
+	}
+	seen := make(map[string]struct{}, len(spec.Webseeds))
+	for _, existing := range spec.Webseeds {
+		seen[existing] = struct{}{}
+	}
+	for _, raw := range uris {
+		uri := strings.TrimSpace(raw)
+		if !isWebSeedURL(uri) {
+			continue
+		}
+		if _, ok := seen[uri]; ok {
+			continue
+		}
+		seen[uri] = struct{}{}
+		spec.Webseeds = append(spec.Webseeds, uri)
+	}
+}
+
+func isWebSeedURL(uri string) bool {
+	lower := strings.ToLower(strings.TrimSpace(uri))
+	if !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://") {
+		return false
+	}
+	return !strings.HasSuffix(lower, ".torrent")
 }
 
 func restoreSource(meta map[string]string) (*addResult, error) {

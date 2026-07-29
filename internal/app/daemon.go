@@ -64,7 +64,7 @@ func runDaemon(args []string) error {
 		logger.Printf("config warning: follow-torrent=false is accepted for aria2 compatibility, but downloading .torrent files without following is not implemented yet")
 	}
 	if cfg.SeedTime > 0 {
-		logger.Printf("config warning: seed-time is accepted for aria2 compatibility, but automatic stop-seeding by time is not implemented yet")
+		logger.Printf("config warning: seed-time is accepted; enforcement applies to BT seeding via sync loop")
 	}
 	if !cfg.BTLoadSavedMetadata {
 		logger.Printf("config warning: bt-load-saved-metadata=false is accepted for aria2 compatibility, but saved metadata loading policy is not implemented yet")
@@ -148,6 +148,13 @@ func runDaemon(args []string) error {
 	}
 
 	service := aria2.NewService(mgr, cfg.RPCSecret)
+	shutdownReq := make(chan bool, 1)
+	service.SetShutdownHook(func(force bool) {
+		select {
+		case shutdownReq <- force:
+		default:
+		}
+	})
 	mux := http.NewServeMux()
 	daemonStarted := time.Now()
 	rpcListenAddr := listenAddr(cfg.RPCListenPort, cfg.RPCListenAll)
@@ -218,7 +225,21 @@ func runDaemon(args []string) error {
 		logger.Printf("rpc disabled by config (enable-rpc=false)，无法提供 JSON-RPC")
 	}
 
-	<-stop
+	select {
+	case <-stop:
+	case force := <-shutdownReq:
+		logger.Printf("aria2.shutdown received (force=%v)", force)
+		if force {
+			if cfg.EnableRPC {
+				_ = server.Close()
+			}
+			if err := mgr.Close(context.Background()); err != nil {
+				logger.Printf("save session on shutdown failed: %v", err)
+			}
+			return nil
+		}
+	}
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -346,6 +367,9 @@ func syncLoop(logger *log.Logger, mgr *manager.Manager, interval time.Duration) 
 	for range ticker.C {
 		if err := mgr.SyncActive(context.Background()); err != nil {
 			logger.Printf("sync active tasks failed: %v", err)
+		}
+		if err := mgr.EnforceSeedLimits(context.Background()); err != nil {
+			logger.Printf("enforce seed limits failed: %v", err)
 		}
 	}
 }

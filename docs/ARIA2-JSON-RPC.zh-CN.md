@@ -222,7 +222,27 @@
 |------|------|------|------|------|
 | `0` | gid | string | 是 | 任务 GID |
 
-**说明：** 删除任务关联的 **本地结果文件**，不删除任务本身。
+**说明：** 删除 `complete` / `error` 任务的 **本地结果文件**，并从管理器移除该任务（与 aria2 一致）。
+
+**响应 `result`：** `string`，`"OK"`。
+
+---
+
+### 6.7.1 `aria2.purgeDownloadResult`
+
+**params：** 无额外参数。
+
+**说明：** 清除所有已停止（`complete` / `error` / `removed`）任务记录，**不删除**本地文件。
+
+**响应 `result`：** `string`，`"OK"`。
+
+---
+
+### 6.7.2 `aria2.shutdown`
+
+| 索引 | 名称 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| `0` | force | boolean / string | 否 | `true` 时立即关闭；默认优雅退出 |
 
 **响应 `result`：** `string`，`"OK"`。
 
@@ -257,7 +277,7 @@
 | `1` | num | number / string | 是 | 条数 |
 | `2` | keys | array[string] | 否 | 状态字段过滤 |
 
-**响应 `result`：** **array[object]**，`waiting` 与 `paused` 任务分页列表。
+**响应 `result`：** **array[object]**，`waiting` 状态任务分页列表（**不包含** `paused`，与 aria2 一致）。
 
 ---
 

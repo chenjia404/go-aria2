@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"time"
+
 	"github.com/chenjia404/go-aria2/internal/core/task"
 )
 
@@ -74,6 +76,11 @@ type PeerLister interface {
 type ServerLister interface {
 	Driver
 	GetServers(ctx context.Context, taskID string) ([]FileServerInfo, error)
+}
+
+// SeedPolicyEnforcer 允许驱动按 aria2 seed-ratio / seed-time 停止做种。
+type SeedPolicyEnforcer interface {
+	EnforceSeedPolicy(ctx context.Context, taskID string, ratio float64, seedTime time.Duration) error
 }
 
 // GlobalStat 是面向管理器和兼容层的统一全局统计模型�?
