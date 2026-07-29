@@ -20,6 +20,7 @@ type Service struct {
 	startedAt   time.Time
 	sessionID   string
 	sessionPath string
+	ed2kNative  ED2KNativeAPI
 	onShutdown  func(force bool)
 }
 
@@ -64,7 +65,7 @@ func NewService(mgr *manager.Manager, rpcSecret string) *Service {
 	return &Service{
 		manager:   mgr,
 		rpcSecret: rpcSecret,
-		methods:   methods,
+		methods:   append(append([]string(nil), methods...), nativeMethodNames...),
 		startedAt: time.Now(),
 		sessionID: newSessionID(),
 	}
@@ -78,6 +79,11 @@ func (s *Service) SetShutdownHook(fn func(force bool)) {
 // SetSessionPath 设置 aria2.saveSession 未指定路径时的默认落盘位置。
 func (s *Service) SetSessionPath(path string) {
 	s.sessionPath = path
+}
+
+// SetED2KNativeAPI 注入 ED2K 扩展 RPC 后端（ed2k 未启用时可省略）。
+func (s *Service) SetED2KNativeAPI(api ED2KNativeAPI) {
+	s.ed2kNative = api
 }
 
 // VersionInfo 返回与 aria2.getVersion 一致的结构，供 REST 等适配层使用。
@@ -175,6 +181,9 @@ func (s *Service) invokeWithoutAuth(ctx context.Context, method string, params [
 	case "system.multicall":
 		return s.multicall(ctx, params)
 	default:
+		if strings.HasPrefix(method, "native.") {
+			return s.invokeNative(ctx, method, params)
+		}
 		return nil, jsonrpc.NewError(jsonrpc.CodeMethodNotFound, "method not found")
 	}
 }
