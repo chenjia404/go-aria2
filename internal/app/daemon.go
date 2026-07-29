@@ -17,9 +17,7 @@ import (
 	"github.com/chenjia404/go-aria2/internal/config"
 	"github.com/chenjia404/go-aria2/internal/core/manager"
 	"github.com/chenjia404/go-aria2/internal/core/session"
-	"github.com/chenjia404/go-aria2/internal/protocol/bt"
 	"github.com/chenjia404/go-aria2/internal/protocol/ed2k"
-	"github.com/chenjia404/go-aria2/internal/protocol/httpdl"
 	"github.com/chenjia404/go-aria2/internal/rpc/httpapi"
 	rpcserver "github.com/chenjia404/go-aria2/internal/rpc/jsonrpc"
 )
@@ -70,59 +68,15 @@ func runDaemon(args []string) error {
 		Store:         store,
 	})
 
-	btDriver, err := bt.New(bt.Options{
-		DataDir:    runtimePaths.btDataDir,
-		ListenPort: cfg.ListenPort,
-		EnableDHT:  cfg.EnableDHT,
-		MaxPeers:   cfg.BTMaxPeers,
-		Crypto: bt.CryptoOptions{
-			ForceEncryption: cfg.BTForceEncryption,
-			RequireCrypto:   cfg.BTRequireCrypto,
-			MinCryptoLevel:  cfg.BTMinCryptoLevel,
-		},
-		DHTFilePath:           cfg.DHTFilePath,
-		DHTFilePath6:          cfg.DHTFilePath6,
-		DHTListenPort:         cfg.DHTListenPort,
-		EnableDHT6:            cfg.EnableDHT6,
-		MaxOverallUploadLimit: cfg.MaxOverallUploadLimit,
-	})
+	registered, err := registerProtocolDrivers(mgr, cfg, runtimePaths)
 	if err != nil {
-		logger.Fatalf("init bt driver failed: %v", err)
+		logger.Fatalf("%v", err)
 	}
-	defer btDriver.Close()
-	mgr.RegisterDriver(btDriver)
-
-	var ed2kDriver *ed2k.Driver
-	if cfg.ED2KEnable {
-		ed2kDriver, err = ed2k.New(ed2k.Options{
-			ListenPort:   cfg.ED2KListenPort,
-			UDPPort:      cfg.ED2KServerPort,
-			EnableDHT:    cfg.ED2KKadEnable,
-			EnableServer: cfg.ED2KServerEnable,
-			UploadSlots:  cfg.ED2KUploadSlots,
-			MaxSources:   cfg.ED2KMaxSources,
-			StatePath:    runtimePaths.ed2kStatePath,
-		})
-		if err != nil {
-			logger.Fatalf("init ed2k driver failed: %v", err)
-		}
+	defer registered.BT.Close()
+	ed2kDriver := registered.ED2K
+	if ed2kDriver != nil {
 		defer ed2kDriver.Close()
-		mgr.RegisterDriver(ed2kDriver)
 	}
-
-	httpDriver := httpdl.New(httpdl.Options{
-		UserAgent:               cfg.HTTPUserAgent,
-		Referer:                 cfg.HTTPReferer,
-		HTTPProxy:               cfg.HTTPProxy,
-		HTTPSProxy:              cfg.HTTPSProxy,
-		AllProxy:                cfg.AllProxy,
-		NoProxy:                 cfg.NoProxy,
-		CheckCertificate:        cfg.CheckCertificate,
-		Split:                   cfg.Split,
-		MaxConnectionPerServer:  cfg.MaxConnectionPerServer,
-		MaxOverallDownloadLimit: cfg.MaxOverallDownloadLimit,
-	})
-	mgr.RegisterDriver(httpDriver)
 
 	ctx := context.Background()
 	if err := mgr.LoadSession(ctx); err != nil {

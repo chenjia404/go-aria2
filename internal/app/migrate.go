@@ -9,9 +9,6 @@ import (
 	"github.com/chenjia404/go-aria2/internal/core/manager"
 	"github.com/chenjia404/go-aria2/internal/core/session"
 	"github.com/chenjia404/go-aria2/internal/migrate/aria2session"
-	"github.com/chenjia404/go-aria2/internal/protocol/bt"
-	"github.com/chenjia404/go-aria2/internal/protocol/ed2k"
-	"github.com/chenjia404/go-aria2/internal/protocol/httpdl"
 )
 
 // runMigrate 导入 aria2 save-session 文件。
@@ -87,46 +84,14 @@ func runMigrate(args []string) error {
 		Store:         store,
 	})
 
-	btDriver, err := bt.New(bt.Options{
-		DataDir:    runtimePaths.btDataDir,
-		ListenPort: cfg.ListenPort,
-		EnableDHT:  cfg.EnableDHT,
-		MaxPeers:   cfg.BTMaxPeers,
-	})
+	registered, err := registerProtocolDrivers(mgr, cfg, runtimePaths)
 	if err != nil {
 		return err
 	}
-	defer btDriver.Close()
-	mgr.RegisterDriver(btDriver)
-
-	if cfg.ED2KEnable {
-		ed2kDriver, err := ed2k.New(ed2k.Options{
-			ListenPort:   cfg.ED2KListenPort,
-			UDPPort:      cfg.ED2KServerPort,
-			EnableDHT:    cfg.ED2KKadEnable,
-			EnableServer: cfg.ED2KServerEnable,
-			UploadSlots:  cfg.ED2KUploadSlots,
-			MaxSources:   cfg.ED2KMaxSources,
-			StatePath:    runtimePaths.ed2kStatePath,
-		})
-		if err != nil {
-			return err
-		}
-		defer ed2kDriver.Close()
-		mgr.RegisterDriver(ed2kDriver)
+	defer registered.BT.Close()
+	if registered.ED2K != nil {
+		defer registered.ED2K.Close()
 	}
-
-	mgr.RegisterDriver(httpdl.New(httpdl.Options{
-		UserAgent:               cfg.HTTPUserAgent,
-		Referer:                 cfg.HTTPReferer,
-		HTTPProxy:               cfg.HTTPProxy,
-		HTTPSProxy:              cfg.HTTPSProxy,
-		AllProxy:                cfg.AllProxy,
-		CheckCertificate:        cfg.CheckCertificate,
-		Split:                   cfg.Split,
-		MaxConnectionPerServer:  cfg.MaxConnectionPerServer,
-		MaxOverallDownloadLimit: cfg.MaxOverallDownloadLimit,
-	}))
 
 	if err := mgr.LoadSession(ctx); err != nil {
 		return err
