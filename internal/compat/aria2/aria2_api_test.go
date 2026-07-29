@@ -168,6 +168,59 @@ func TestAria2Api_ChangeGlobalOption(t *testing.T) {
 	if got := mustStringMap(t, env.MustCall("aria2.getGlobalOption"))["file-allocation"]; got != "none" {
 		t.Fatalf("expected file-allocation=none, got %q", got)
 	}
+
+	env.ExpectError("aria2.changeGlobalOption", map[string]any{"file-allocation": "foo"})
+}
+
+func TestAria2Api_InvalidFileAllocationOnAdd(t *testing.T) {
+	t.Parallel()
+
+	env := newRPCTestEnv(t, manager.Options{})
+	badOpt := map[string]any{"file-allocation": "foo", "pause": "true"}
+
+	env.ExpectError("aria2.addUri", []any{"http://localhost/1"}, badOpt)
+	env.ExpectError("aria2.addTorrent", sampleTorrentBase64(), badOpt)
+	env.ExpectError("aria2.addMetalink", sampleMetalinkBase64(), badOpt)
+}
+
+func TestAria2Api_ChangeOptionRejectsBadFileAllocation(t *testing.T) {
+	t.Parallel()
+
+	env := newRPCTestEnv(t, manager.Options{})
+	gid := env.MustGID("aria2.addUri",
+		[]any{"http://localhost/1"},
+		map[string]any{"dir": "mydownload", "pause": "true"},
+	)
+
+	env.ExpectError("aria2.changeOption", gid, map[string]any{"file-allocation": "foo"})
+}
+
+func TestAria2Api_HiddenOptionsNotReturned(t *testing.T) {
+	t.Parallel()
+
+	saveDir := t.TempDir()
+	env := newRPCTestEnv(t, manager.Options{
+		GlobalOptions: map[string]string{
+			"dir":               saveDir,
+			"startup-idle-time": "60",
+		},
+	})
+	if got := mustStringMap(t, env.MustCall("aria2.getGlobalOption"))["startup-idle-time"]; got != "" {
+		t.Fatalf("hidden global option should not be returned, got %q", got)
+	}
+
+	gid := env.MustGID("aria2.addUri", []any{"http://localhost/1"}, map[string]any{"pause": "true"})
+	for _, item := range env.Driver.tasks {
+		if item.GID == gid {
+			if item.Options == nil {
+				item.Options = map[string]string{}
+			}
+			item.Options["startup-idle-time"] = "60"
+		}
+	}
+	if got := env.Option(gid)["startup-idle-time"]; got != "" {
+		t.Fatalf("hidden task option should not be returned, got %q", got)
+	}
 }
 
 func TestAria2Api_DownloadResultErrorStatus(t *testing.T) {

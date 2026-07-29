@@ -80,6 +80,9 @@ func parseAddTorrentParams(params []any) (payload []byte, uris []string, options
 
 	rest := params[1:]
 	if pos, ok, trimmed := parseOptionalTrailingPosition(rest); ok {
+		if pos < 0 {
+			return nil, nil, nil, position, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "position must be non-negative")
+		}
 		position = pos
 		rest = trimmed
 	}

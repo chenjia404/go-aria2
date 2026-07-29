@@ -219,12 +219,18 @@ func (s *Service) addURI(ctx context.Context, params []any) (any, error) {
 		if !ok || strings.TrimSpace(uri) == "" {
 			return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "uri must be a non-empty string")
 		}
+		if !isValidURI(uri) {
+			return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "uri must be a valid URI")
+		}
 		uris = append(uris, uri)
 	}
 
 	position := -1
 	rest := params[1:]
 	if pos, ok, trimmed := parseOptionalTrailingPosition(rest); ok {
+		if pos < 0 {
+			return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "position must be non-negative")
+		}
 		position = pos
 		rest = trimmed
 	}
@@ -232,6 +238,9 @@ func (s *Service) addURI(ctx context.Context, params []any) (any, error) {
 	options := map[string]string{}
 	if len(rest) >= 1 {
 		options = parseOptions(rest[0])
+	}
+	if err := validateAddOptions(options); err != nil {
+		return nil, err
 	}
 
 	input := task.AddTaskInput{
@@ -251,6 +260,9 @@ func (s *Service) addURI(ctx context.Context, params []any) (any, error) {
 func (s *Service) addTorrent(ctx context.Context, params []any) (any, error) {
 	payload, uris, options, position, err := parseAddTorrentParams(params)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateAddOptions(options); err != nil {
 		return nil, err
 	}
 
@@ -552,7 +564,15 @@ func (s *Service) changeOption(ctx context.Context, params []any) (any, error) {
 		return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "options must be an object")
 	}
 
-	updated, err := s.manager.ChangeOption(ctx, gid, options)
+	filtered, err := prepareChangeTaskOptions(options)
+	if err != nil {
+		return nil, err
+	}
+	if len(filtered) == 0 {
+		return "OK", nil
+	}
+
+	updated, err := s.manager.ChangeOption(ctx, gid, filtered)
 	if err != nil {
 		return nil, err
 	}
@@ -561,7 +581,7 @@ func (s *Service) changeOption(ctx context.Context, params []any) (any, error) {
 }
 
 func (s *Service) getGlobalOption() map[string]string {
-	return s.manager.GetGlobalOption()
+	return filterHiddenOptions(s.manager.GetGlobalOption())
 }
 
 func (s *Service) changeGlobalOption(ctx context.Context, params []any) (any, error) {
@@ -575,7 +595,15 @@ func (s *Service) changeGlobalOption(ctx context.Context, params []any) (any, er
 		return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "options must be an object")
 	}
 
-	return s.manager.ChangeGlobalOption(options), nil
+	filtered, err := prepareChangeGlobalOptions(options)
+	if err != nil {
+		return nil, err
+	}
+	if len(filtered) == 0 {
+		return s.getGlobalOption(), nil
+	}
+
+	return filterHiddenOptions(s.manager.ChangeGlobalOption(filtered)), nil
 }
 
 func (s *Service) multicall(ctx context.Context, params []any) (any, error) {
@@ -787,6 +815,9 @@ func (s *Service) changeUri(ctx context.Context, params []any) (any, error) {
 	fileIndex, err := intParam(params, 1, "fileIndex")
 	if err != nil {
 		return nil, err
+	}
+	if fileIndex < 1 {
+		return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "fileIndex must be >= 1")
 	}
 	delURIs := []string{}
 	if len(params) > 2 {

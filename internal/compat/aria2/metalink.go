@@ -24,6 +24,9 @@ func parseAddMetalinkParams(params []any) (payload []byte, options map[string]st
 	options = map[string]string{}
 	rest := params[1:]
 	if pos, ok, trimmed := parseOptionalTrailingPosition(rest); ok {
+		if pos < 0 {
+			return nil, nil, position, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "position must be non-negative")
+		}
 		position = pos
 		rest = trimmed
 	}
@@ -75,6 +78,9 @@ func metalinkFilesToAddInputs(files []metalink.File, options map[string]string) 
 func (s *Service) addMetalink(ctx context.Context, params []any) (any, error) {
 	payload, options, position, err := parseAddMetalinkParams(params)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateAddOptions(options); err != nil {
 		return nil, err
 	}
 

@@ -313,7 +313,36 @@ Conventions:
 - `token:xxx` auth is supported
 - WebSocket notifications honor `rpc-secret` via `?token=...`, `Authorization: token:...`, or `X-Auth-Token`
 
-## Protocol support
+### Compatibility testing (aria2 parity)
+
+Compatibility behavior is validated against aria2’s official test suites:
+
+| aria2 test file | go-aria2 coverage |
+|-----------------|-------------------|
+| `test/Aria2ApiTest.cc` | `internal/compat/aria2/aria2_api_test.go` — add/remove/pause, options, queue position, error status |
+| `test/RpcMethodTest.cc` | `internal/compat/aria2/rpc_method_test.go` — parameter validation, bad options, auth, multicall errors |
+
+Option validation aligned with aria2:
+
+- Known options with invalid values (e.g. `file-allocation=foo`, `max-download-limit=badvalue`) are rejected on `addUri` / `addTorrent` / `addMetalink` / `changeOption` / `changeGlobalOption`
+- Speed limits accept `K` / `M` / `G` suffixes (base 1024) and are normalized to byte counts in stored options
+- Global-only options (`max-overall-download-limit`, etc.) passed to `changeOption` are silently ignored
+- Runtime-disallowed options (`enable-rpc`, etc.) passed to `changeGlobalOption` are silently ignored
+- Hidden internal options (e.g. `startup-idle-time`) are not returned by `getOption` / `getGlobalOption`
+- `addUri` requires a valid URI scheme; queue `position` must be non-negative
+- `changeUri` requires `fileIndex >= 1`
+
+Daemon-side comparison tests (requires `aria2c` on PATH):
+
+```bash
+go test -tags=integration -timeout 10m ./internal/compat/aria2/integration/...
+```
+
+Unit compatibility tests (no aria2 install required):
+
+```bash
+go test ./internal/compat/aria2/...
+```
 
 ### BitTorrent
 
@@ -375,7 +404,7 @@ Comparison integration tests against the official aria2 daemon (requires `aria2c
 go test -tags=integration -timeout 10m ./internal/compat/aria2/integration/...
 ```
 
-Compatibility unit tests (inspired by aria2's `Aria2ApiTest.cc`; no aria2 install required):
+Compatibility unit tests (inspired by aria2's `Aria2ApiTest.cc` and `RpcMethodTest.cc`; no aria2 install required):
 
 ```bash
 go test ./internal/compat/aria2/...
