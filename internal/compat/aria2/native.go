@@ -16,7 +16,6 @@ type ED2KNativeAPI interface {
 	ConnectServer(ctx context.Context, addr string) error
 	KadStatus(ctx context.Context) (map[string]any, error)
 	ConnectKad(ctx context.Context, nodes []string) error
-	RecheckFile(ctx context.Context, gid string) error
 }
 
 var nativeMethodNames = []string{
@@ -261,14 +260,11 @@ func (s *Service) nativeConnectKad(ctx context.Context, params []any) (any, erro
 }
 
 func (s *Service) nativeRecheckEd2kFile(ctx context.Context, params []any) (any, error) {
-	if s.ed2kNative == nil {
-		return nil, jsonrpc.NewError(jsonrpc.CodeInternalError, "ed2k native API is not available")
-	}
 	gid, err := stringParam(params, 0, "gid")
 	if err != nil {
 		return nil, err
 	}
-	if err := s.ed2kNative.RecheckFile(ctx, gid); err != nil {
+	if err := s.manager.RecheckEd2kFile(ctx, gid); err != nil {
 		return nil, err
 	}
 	return "OK", nil

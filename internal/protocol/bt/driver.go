@@ -36,7 +36,8 @@ type Options struct {
 	DHTFilePath6          string
 	DHTListenPort         int
 	EnableDHT6            bool
-	MaxOverallUploadLimit int64
+	MaxOverallUploadLimit   int64
+	MaxOverallDownloadLimit int64
 }
 
 type state struct {
@@ -68,11 +69,12 @@ type Driver struct {
 	closeErr        error
 	opts            Options
 	uploadLimiter   *rate.Limiter
+	downloadLimiter *rate.Limiter
 	dhtIPv4Path     string
 	dhtIPv6Path     string
 }
 
-func buildTorrentConfig(opts Options, listenPort int, uploadLimiter **rate.Limiter) *torrentlib.ClientConfig {
+func buildTorrentConfig(opts Options, listenPort int, uploadLimiter **rate.Limiter, downloadLimiter **rate.Limiter) *torrentlib.ClientConfig {
 	cfg := torrentlib.NewDefaultClientConfig()
 	cfg.DataDir = opts.DataDir
 	cfg.ListenPort = listenPort
@@ -94,6 +96,15 @@ func buildTorrentConfig(opts Options, listenPort int, uploadLimiter **rate.Limit
 		}
 	}
 	cfg.UploadRateLimiter = *uploadLimiter
+	if *downloadLimiter == nil {
+		if opts.MaxOverallDownloadLimit > 0 {
+			burst := max(16*1024, int(opts.MaxOverallDownloadLimit))
+			*downloadLimiter = rate.NewLimiter(rate.Limit(opts.MaxOverallDownloadLimit), burst)
+		} else {
+			*downloadLimiter = rate.NewLimiter(rate.Inf, 1<<20)
+		}
+	}
+	cfg.DownloadRateLimiter = *downloadLimiter
 	applyBTCryptoOptions(cfg, opts.Crypto)
 	applySeparateDHTConfig(cfg, opts)
 	return cfg
@@ -109,23 +120,23 @@ func effectiveListenPort(opts Options) int {
 	return 0
 }
 
-func newTorrentClient(opts Options, uploadLimiter **rate.Limiter) (*torrentlib.Client, error) {
+func newTorrentClient(opts Options, uploadLimiter **rate.Limiter, downloadLimiter **rate.Limiter) (*torrentlib.Client, error) {
 	listenPort := effectiveListenPort(opts)
-	client, err := torrentlib.NewClient(buildTorrentConfig(opts, listenPort, uploadLimiter))
+	client, err := torrentlib.NewClient(buildTorrentConfig(opts, listenPort, uploadLimiter, downloadLimiter))
 	if err == nil {
 		return client, nil
 	}
 	// 固定端口：多协议绑定失败时换动态端口
 	if opts.ListenPort != 0 {
 		log.Printf("[bt] listen on port %d failed: %v; retrying with listen-port=0", opts.ListenPort, err)
-		client, err = torrentlib.NewClient(buildTorrentConfig(opts, 0, uploadLimiter))
+		client, err = torrentlib.NewClient(buildTorrentConfig(opts, 0, uploadLimiter, downloadLimiter))
 		if err == nil {
 			return client, nil
 		}
 	}
 	// Windows 常见：udp4 报 WSAEACCES（权限/防火墙/Hyper-V 保留端口等），或 IPv6 UDP 异常
 	log.Printf("[bt] listen failed: %v; retrying with DisableIPv6", err)
-	cfg := buildTorrentConfig(opts, 0, uploadLimiter)
+	cfg := buildTorrentConfig(opts, 0, uploadLimiter, downloadLimiter)
 	cfg.DisableIPv6 = true
 	client, err = torrentlib.NewClient(cfg)
 	if err == nil {
@@ -133,7 +144,7 @@ func newTorrentClient(opts Options, uploadLimiter **rate.Limiter) (*torrentlib.C
 	}
 	// 不再监听 UDP：仅 TCP BT（无 uTP、无 DHT），仍可与多数 peer 通信
 	log.Printf("[bt] listen failed: %v; retrying TCP-only (DisableUTP, NoDHT)", err)
-	cfg2 := buildTorrentConfig(opts, 0, uploadLimiter)
+	cfg2 := buildTorrentConfig(opts, 0, uploadLimiter, downloadLimiter)
 	cfg2.DisableIPv6 = true
 	cfg2.DisableUTP = true
 	cfg2.NoDHT = true
@@ -144,7 +155,8 @@ func newTorrentClient(opts Options, uploadLimiter **rate.Limiter) (*torrentlib.C
 // New 创建 BT 驱动�?
 func New(opts Options) (*Driver, error) {
 	var uploadLimiter *rate.Limiter
-	client, err := newTorrentClient(opts, &uploadLimiter)
+	var downloadLimiter *rate.Limiter
+	client, err := newTorrentClient(opts, &uploadLimiter, &downloadLimiter)
 	if err != nil {
 		return nil, err
 	}
@@ -158,6 +170,7 @@ func New(opts Options) (*Driver, error) {
 		rebuildProgress: RebuildBTProgress,
 		opts:            opts,
 		uploadLimiter:   uploadLimiter,
+		downloadLimiter: downloadLimiter,
 		dhtIPv4Path:     dhtIPv4,
 		dhtIPv6Path:     dhtIPv6,
 	}, nil
