@@ -320,7 +320,7 @@ ed2k-upload-slots=3
 | aria2 测试文件 | go-aria2 覆盖 |
 |----------------|---------------|
 | `test/Aria2ApiTest.cc` | `internal/compat/aria2/aria2_api_test.go` — 添加/删除/暂停、选项、队列位置、错误状态 |
-| `test/RpcMethodTest.cc` | `rpc_method_test.go`、`rpc_method_progress_test.go`、`rpc_method_gid_test.go`、`rpc_method_lifecycle_test.go` — 参数校验、GID 错误、pause 生命周期、鉴权 |
+| `test/RpcMethodTest.cc` | `rpc_method_test.go`、`rpc_method_progress_test.go`、`rpc_method_gid_test.go`、`rpc_method_lifecycle_test.go`、`rpc_method_changeoption_test.go`、`websocket_notify_test.go` — 参数校验、GID 错误、pause 生命周期、changeOption、WebSocket 通知 |
 
 选项校验与 aria2 对齐：
 
@@ -337,6 +337,7 @@ ed2k-upload-slots=3
 - `tellStatus` 对批量下载（如 `addMetalink`）返回 `followedBy` / `following` / `belongsTo`
 - `addTorrent` 在 `rpc-save-upload-metadata=true` 时将 torrent 保存为 `dir/<infohash>.torrent`
 - `aria2.forcePauseAll` 会强制暂停所有活动与等待中的任务
+- WebSocket 通知：`pause=true` 添加任务不触发 `onDownloadStart`；BT 做种结束后触发 `onDownloadComplete`
 
 与官方 aria2 daemon 的 RPC 对比集成测试（需本机已安装 `aria2c`）：
 

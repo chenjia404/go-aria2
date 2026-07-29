@@ -320,7 +320,7 @@ Compatibility behavior is validated against aria2’s official test suites:
 | aria2 test file | go-aria2 coverage |
 |-----------------|-------------------|
 | `test/Aria2ApiTest.cc` | `internal/compat/aria2/aria2_api_test.go` — add/remove/pause, options, queue position, error status |
-| `test/RpcMethodTest.cc` | `rpc_method_test.go`, `rpc_method_progress_test.go`, `rpc_method_gid_test.go`, `rpc_method_lifecycle_test.go` — validation, GID errors, pause lifecycle, auth |
+| `test/RpcMethodTest.cc` | `rpc_method_test.go`, `rpc_method_progress_test.go`, `rpc_method_gid_test.go`, `rpc_method_lifecycle_test.go`, `rpc_method_changeoption_test.go`, `websocket_notify_test.go` — validation, GID errors, pause lifecycle, changeOption, WebSocket notifications |
 
 Option validation aligned with aria2:
 
@@ -337,6 +337,7 @@ Option validation aligned with aria2:
 - `tellStatus` includes `followedBy` / `following` / `belongsTo` for batch downloads (e.g. `addMetalink`)
 - `rpc-save-upload-metadata=true` on `addTorrent` saves `<infohash>.torrent` under `dir`
 - `aria2.forcePauseAll` forcibly pauses all active and waiting downloads
+- WebSocket notifications: `pause=true` add does not emit `onDownloadStart`; BT post-seed emits `onDownloadComplete`
 
 Daemon-side comparison tests (requires `aria2c` on PATH):
 
