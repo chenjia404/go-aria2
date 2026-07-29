@@ -320,13 +320,14 @@ ed2k-upload-slots=3
 | aria2 测试文件 | go-aria2 覆盖 |
 |----------------|---------------|
 | `test/Aria2ApiTest.cc` | `internal/compat/aria2/aria2_api_test.go` — 添加/删除/暂停、选项、队列位置、错误状态 |
-| `test/RpcMethodTest.cc` | `internal/compat/aria2/rpc_method_test.go` — 参数校验、无效选项、鉴权、multicall 错误 |
+| `test/RpcMethodTest.cc` | `rpc_method_test.go`、`rpc_method_progress_test.go`、`rpc_method_gid_test.go`、`rpc_method_lifecycle_test.go` — 参数校验、GID 错误、pause 生命周期、鉴权 |
 
 选项校验与 aria2 对齐：
 
 - 已知选项的无效值（如 `file-allocation=foo`、`max-download-limit=badvalue`）在 `addUri` / `addTorrent` / `addMetalink` / `changeOption` / `changeGlobalOption` 时会被拒绝
 - 速度限制支持 `K` / `M` / `G` 后缀（基数 1024），存储时规范化为字节数
-- 整数类选项（`split`、`listen-port`、`max-concurrent-downloads` 等）与 `seed-ratio` 在 add/change 时校验
+- 整数类选项（`split`、`listen-port`、`seed-time`、`connect-timeout` 等）与 `seed-ratio` 在 add/change 时校验
+- 无效 GID 的 `tellStatus` / `getOption` / `changeUri` 等返回 `CodeInvalidParams`
 - `tellStatus` 中 `bittorrent.creationDate` 序列化为 JSON 数字（与 aria2 一致）
 - 全局专属选项（如 `max-overall-download-limit`）传入 `changeOption` 时静默忽略
 - 不可运行时修改的选项（如 `enable-rpc`）传入 `changeGlobalOption` 时静默忽略

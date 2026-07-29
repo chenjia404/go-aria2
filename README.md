@@ -320,13 +320,14 @@ Compatibility behavior is validated against aria2’s official test suites:
 | aria2 test file | go-aria2 coverage |
 |-----------------|-------------------|
 | `test/Aria2ApiTest.cc` | `internal/compat/aria2/aria2_api_test.go` — add/remove/pause, options, queue position, error status |
-| `test/RpcMethodTest.cc` | `internal/compat/aria2/rpc_method_test.go` — parameter validation, bad options, auth, multicall errors |
+| `test/RpcMethodTest.cc` | `rpc_method_test.go`, `rpc_method_progress_test.go`, `rpc_method_gid_test.go`, `rpc_method_lifecycle_test.go` — validation, GID errors, pause lifecycle, auth |
 
 Option validation aligned with aria2:
 
 - Known options with invalid values (e.g. `file-allocation=foo`, `max-download-limit=badvalue`) are rejected on `addUri` / `addTorrent` / `addMetalink` / `changeOption` / `changeGlobalOption`
 - Speed limits accept `K` / `M` / `G` suffixes (base 1024) and are normalized to byte counts in stored options
-- Integer options (`split`, `listen-port`, `max-concurrent-downloads`, etc.) and `seed-ratio` are validated on add/change
+- Integer options (`split`, `listen-port`, `seed-time`, `connect-timeout`, etc.) and `seed-ratio` are validated on add/change
+- Invalid GID on `tellStatus` / `getOption` / `changeUri` returns `CodeInvalidParams`
 - `bittorrent.creationDate` in `tellStatus` is serialized as a JSON number (aria2 parity)
 - Global-only options (`max-overall-download-limit`, etc.) passed to `changeOption` are silently ignored
 - Runtime-disallowed options (`enable-rpc`, etc.) passed to `changeGlobalOption` are silently ignored

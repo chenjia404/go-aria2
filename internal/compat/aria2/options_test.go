@@ -122,6 +122,12 @@ func TestValidateKnownOption_PositiveIntOptions(t *testing.T) {
 	if err := validateKnownOption("seed-ratio", "foo"); err == nil {
 		t.Fatal("expected error for invalid seed-ratio")
 	}
+	if err := validateKnownOption("seed-time", "3600"); err != nil {
+		t.Fatalf("valid seed-time rejected: %v", err)
+	}
+	if err := validateKnownOption("connect-timeout", "bad"); err == nil {
+		t.Fatal("expected error for invalid connect-timeout")
+	}
 }
 
 func TestIsValidURI(t *testing.T) {

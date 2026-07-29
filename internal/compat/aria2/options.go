@@ -123,6 +123,10 @@ func validateKnownOption(key, value string) error {
 		if _, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err != nil {
 			return optionError(key, value)
 		}
+	case "seed-time", "connect-timeout", "timeout", "retry-wait":
+		if _, err := parsePositiveInt(value); err != nil {
+			return optionError(key, value)
+		}
 	}
 	return nil
 }

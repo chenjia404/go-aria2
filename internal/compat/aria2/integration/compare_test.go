@@ -392,6 +392,79 @@ func TestCompareAria2_PurgeDownloadResult(t *testing.T) {
 	}
 }
 
+func TestCompareAria2_GetSessionInfoAndListNotifications(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-session"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	aria2Info := decodeJSON[map[string]any](t, first(rawCall(t, ctx, aria2, goAria, "aria2.getSessionInfo", nil)), "aria2 session")
+	goInfo := decodeJSON[map[string]any](t, second(rawCall(t, ctx, aria2, goAria, "aria2.getSessionInfo", nil)), "go session")
+	for _, key := range []string{"sessionId"} {
+		if aria2Info[key] == nil || aria2Info[key] == "" {
+			t.Fatalf("aria2 getSessionInfo missing %q: %#v", key, aria2Info)
+		}
+		if goInfo[key] == nil || goInfo[key] == "" {
+			t.Fatalf("go-aria2 getSessionInfo missing %q: %#v", key, goInfo)
+		}
+	}
+
+	aria2Notes := decodeJSON[[]string](t, first(rawCall(t, ctx, aria2, goAria, "system.listNotifications", nil)), "aria2 notifications")
+	goNotes := decodeJSON[[]string](t, second(rawCall(t, ctx, aria2, goAria, "system.listNotifications", nil)), "go notifications")
+	for _, method := range []string{
+		"aria2.onDownloadStart",
+		"aria2.onDownloadComplete",
+		"aria2.onDownloadError",
+	} {
+		if !contains(aria2Notes, method) {
+			t.Fatalf("aria2 missing notification %s", method)
+		}
+		if !contains(goNotes, method) {
+			t.Fatalf("go-aria2 missing notification %s", method)
+		}
+	}
+}
+
+func TestCompareAria2_GetOption(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-getoption"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/getoption.bin"}, map[string]any{"pause": "true", "out": "getoption.bin"}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		opts := decodeJSON[map[string]string](t, mustCall(t, ctx, d, "aria2.getOption", gid), d.name+" getOption")
+		if opts["out"] != "getoption.bin" {
+			t.Fatalf("%s out mismatch: %#v", d.name, opts)
+		}
+		if opts["pause"] != "true" {
+			t.Fatalf("%s pause mismatch: %#v", d.name, opts)
+		}
+	}
+}
+
+func TestCompareAria2_ShutdownReturnsOK(t *testing.T) {
+	t.Run("aria2", func(t *testing.T) {
+		work := t.TempDir()
+		d := startAria2Daemon(t, work, freeListenPort(t), "compare-shutdown-aria2")
+		ctx := context.Background()
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.shutdown"), "aria2 shutdown"); got != "OK" {
+			t.Fatalf("aria2 shutdown returned %q", got)
+		}
+	})
+	t.Run("go-aria2", func(t *testing.T) {
+		work := t.TempDir()
+		d := startGoAria2Daemon(t, work, freeListenPort(t), "compare-shutdown-go")
+		ctx := context.Background()
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.shutdown"), "go shutdown"); got != "OK" {
+			t.Fatalf("go-aria2 shutdown returned %q", got)
+		}
+	})
+}
+
 func TestCompareAria2_RemoveDownloadResult(t *testing.T) {
 	work := t.TempDir()
 	secret := "compare-remove-result"
