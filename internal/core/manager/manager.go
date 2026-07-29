@@ -15,11 +15,17 @@ import (
 
 	"github.com/chenjia404/go-aria2/internal/core/session"
 	"github.com/chenjia404/go-aria2/internal/core/task"
+	"github.com/chenjia404/go-aria2/internal/protocol/common"
 )
 
 // btTrackerSyncer 由 BT 驱动实现，用于运行期同步 tracker 列表。
 type btTrackerSyncer interface {
 	SyncBTTrackerOptions(ctx context.Context, taskID string, opts map[string]string) error
+}
+
+// uploadLimitSetter 由 BT 等驱动实现，用于运行期同步全局限速。
+type uploadLimitSetter interface {
+	SetUploadLimit(bytesPerSec int64)
 }
 
 func optionKeysAffectBT(opts map[string]string) bool {
@@ -105,6 +111,11 @@ func (m *Manager) Add(ctx context.Context, input task.AddTaskInput) (*task.Task,
 	}
 	input.Options = mergedOptions
 	input.Meta = cloneOptions(input.Meta)
+	if common.OptionBool(mergedOptions, "pause-metadata", false) && strings.EqualFold(input.Meta["aria2.metalink"], "true") {
+		mergedOptions["pause"] = "true"
+		perTaskLocal["pause"] = "true"
+		input.Options = mergedOptions
+	}
 
 	created, err := driver.Add(ctx, input)
 	if err != nil {
@@ -588,10 +599,17 @@ func (m *Manager) GetGlobalOption() map[string]string {
 // ChangeGlobalOption 更新全局选项，并让后续新增任务使用新值�?
 func (m *Manager) ChangeGlobalOption(opts map[string]string) map[string]string {
 	needBT := false
-	for k := range opts {
+	var uploadLimit int64
+	var uploadLimitSet bool
+	for k, v := range opts {
 		if k == "bt-tracker" || k == "bt-exclude-tracker" {
 			needBT = true
-			break
+		}
+		if k == "max-overall-upload-limit" {
+			if parsed, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+				uploadLimit = parsed
+				uploadLimitSet = true
+			}
 		}
 	}
 	type btSyncJob struct {
@@ -645,7 +663,16 @@ func (m *Manager) ChangeGlobalOption(opts map[string]string) map[string]string {
 		}
 	}
 	out := cloneOptions(m.globalOptions)
+	drivers := append([]Driver(nil), m.drivers...)
 	m.mu.Unlock()
+
+	if uploadLimitSet {
+		for _, drv := range drivers {
+			if setter, ok := drv.(uploadLimitSetter); ok {
+				setter.SetUploadLimit(uploadLimit)
+			}
+		}
+	}
 
 	if needBT {
 		for _, job := range btJobs {

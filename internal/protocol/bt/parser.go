@@ -88,6 +88,19 @@ func parseAddInput(ctx context.Context, input task.AddTaskInput) (*addResult, er
 		lower := strings.ToLower(uri)
 		switch {
 		case strings.HasPrefix(lower, "magnet:"):
+			if spec, raw, ok := maybeLoadMagnetFromSavedMetadata(uri, input.SaveDir, input.Options); ok {
+				attachWebSeeds(spec, allURIs[index+1:])
+				return &addResult{
+					Spec: spec,
+					Source: addSource{
+						Kind:          "magnet",
+						URI:           uri,
+						DisplayName:   spec.DisplayName,
+						TorrentBase64: base64.StdEncoding.EncodeToString(raw),
+						Trackers:      flattenTrackers(spec.Trackers),
+					},
+				}, nil
+			}
 			spec, err := torrentlib.TorrentSpecFromMagnetUri(uri)
 			if err != nil {
 				return nil, err
