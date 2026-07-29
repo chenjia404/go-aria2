@@ -171,7 +171,7 @@ func toOptionResponse(item *task.Task) map[string]string {
 	if item.Name != "" {
 		options["out"] = item.Name
 	}
-	return options
+	return filterHiddenOptions(options)
 }
 
 func cloneOptionMap(src map[string]string) map[string]string {

@@ -313,6 +313,37 @@ ed2k-upload-slots=3
 - 支持 `token:xxx` 形式的鉴权参数
 - WebSocket 通知端点同样遵循 `rpc-secret`，可通过 `?token=...`、`Authorization: token:...` 或 `X-Auth-Token` 传入
 
+### 兼容性测试（对齐 aria2）
+
+兼容性行为参考 aria2 官方测试套件进行验证：
+
+| aria2 测试文件 | go-aria2 覆盖 |
+|----------------|---------------|
+| `test/Aria2ApiTest.cc` | `internal/compat/aria2/aria2_api_test.go` — 添加/删除/暂停、选项、队列位置、错误状态 |
+| `test/RpcMethodTest.cc` | `internal/compat/aria2/rpc_method_test.go` — 参数校验、无效选项、鉴权、multicall 错误 |
+
+选项校验与 aria2 对齐：
+
+- 已知选项的无效值（如 `file-allocation=foo`、`max-download-limit=badvalue`）在 `addUri` / `addTorrent` / `addMetalink` / `changeOption` / `changeGlobalOption` 时会被拒绝
+- 速度限制支持 `K` / `M` / `G` 后缀（基数 1024），存储时规范化为字节数
+- 全局专属选项（如 `max-overall-download-limit`）传入 `changeOption` 时静默忽略
+- 不可运行时修改的选项（如 `enable-rpc`）传入 `changeGlobalOption` 时静默忽略
+- 隐藏内部选项（如 `startup-idle-time`）不会通过 `getOption` / `getGlobalOption` 返回
+- `addUri` 要求合法 URI scheme；队列 `position` 必须为非负整数
+- `changeUri` 要求 `fileIndex >= 1`
+
+与官方 aria2 daemon 的 RPC 对比集成测试（需本机已安装 `aria2c`）：
+
+```bash
+go test -tags=integration -timeout 10m ./internal/compat/aria2/integration/...
+```
+
+兼容性单元测试（无需安装 aria2）：
+
+```bash
+go test ./internal/compat/aria2/...
+```
+
 ## 协议支持
 
 ### BitTorrent
@@ -375,7 +406,7 @@ go test -tags=integration -timeout 5m ./internal/app/...
 go test -tags=integration -timeout 10m ./internal/compat/aria2/integration/...
 ```
 
-兼容性单元测试（参考 aria2 官方 `Aria2ApiTest.cc`，无需安装 aria2）：
+兼容性单元测试（参考 aria2 官方 `Aria2ApiTest.cc` 与 `RpcMethodTest.cc`，无需安装 aria2）：
 
 ```bash
 go test ./internal/compat/aria2/...
