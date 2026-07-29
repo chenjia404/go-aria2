@@ -1,0 +1,30 @@
+name: integration
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  aria2-compat-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install aria2
+        run: sudo apt-get update && sudo apt-get install -y aria2
+
+      - name: Unit tests
+        run: go test ./...
+
+      - name: aria2 compatibility integration tests
+        run: go test -tags=integration -timeout 10m ./internal/compat/aria2/integration/... -v
+
+      - name: Process integration tests
+        run: go test -tags=integration -timeout 5m ./internal/app/...

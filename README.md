@@ -369,6 +369,18 @@ Process-level integration tests (no `curl`; local HTTP via `httptest`):
 go test -tags=integration -timeout 5m ./internal/app/...
 ```
 
+Comparison integration tests against the official aria2 daemon (requires `aria2c` on PATH, or set `ARIA2C_BIN`; starts aria2 and go-aria2 in parallel and compares RPC responses):
+
+```bash
+go test -tags=integration -timeout 10m ./internal/compat/aria2/integration/...
+```
+
+Compatibility unit tests (inspired by aria2's `Aria2ApiTest.cc`; no aria2 install required):
+
+```bash
+go test ./internal/compat/aria2/...
+```
+
 ## License
 
 This repository does not declare a license explicitly. Add a license file before a public release.

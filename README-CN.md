@@ -369,6 +369,18 @@ go test ./...
 go test -tags=integration -timeout 5m ./internal/app/...
 ```
 
+与官方 aria2 daemon 的 RPC 对比集成测试（需本机已安装 `aria2c`，或通过 `ARIA2C_BIN` 指定路径；会并行启动 aria2 与 go-aria2 并比对响应）：
+
+```bash
+go test -tags=integration -timeout 10m ./internal/compat/aria2/integration/...
+```
+
+兼容性单元测试（参考 aria2 官方 `Aria2ApiTest.cc`，无需安装 aria2）：
+
+```bash
+go test ./internal/compat/aria2/...
+```
+
 ## 许可证
 
 当前仓库未显式声明许可证。若准备对外发布，建议先补充许可证文件。
