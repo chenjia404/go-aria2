@@ -102,7 +102,7 @@ func (s *Service) SessionInfo() map[string]any {
 
 // Invoke ????? aria2 ???????????????? rpc-secret ????????
 func (s *Service) Invoke(ctx context.Context, method string, params []any) (any, error) {
-	if method == "system.multicall" {
+	if method == "system.listMethods" || method == "system.listNotifications" || method == "system.multicall" {
 		return s.invokeWithoutAuth(ctx, method, params)
 	}
 

@@ -130,3 +130,27 @@ func TestMulticallRejectsInvalidSubcallToken(t *testing.T) {
 		t.Fatalf("unexpected error code: %#v", errObj)
 	}
 }
+
+func TestListMethodsWorksWithoutTokenWhenSecretConfigured(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(manager.New(manager.Options{DefaultDir: t.TempDir()}), "secret")
+
+	raw, err := service.Invoke(context.Background(), "system.listMethods", nil)
+	if err != nil {
+		t.Fatalf("listMethods: %v", err)
+	}
+	methods, ok := raw.([]string)
+	if !ok || len(methods) == 0 {
+		t.Fatalf("unexpected methods: %#v", raw)
+	}
+
+	rawNotifications, err := service.Invoke(context.Background(), "system.listNotifications", nil)
+	if err != nil {
+		t.Fatalf("listNotifications: %v", err)
+	}
+	notifications, ok := rawNotifications.([]string)
+	if !ok || len(notifications) == 0 {
+		t.Fatalf("unexpected notifications: %#v", rawNotifications)
+	}
+}
