@@ -74,6 +74,34 @@ func (m *Manager) ForcePauseAll(ctx context.Context) error {
 	return m.SaveSession(ctx)
 }
 
+// insertTaskAtQueuePosition 将 waiting/paused 任务插入队列指定位置（aria2 add* position）。
+func (m *Manager) insertTaskAtQueuePosition(gid string, position int) error {
+	taskID, item, _, err := m.lookupByGID(gid)
+	if err != nil {
+		return err
+	}
+	if item.Status != task.StatusWaiting && item.Status != task.StatusPaused {
+		return nil
+	}
+
+	queue := m.orderedQueueTaskIDs()
+	filtered := make([]string, 0, len(queue))
+	for _, id := range queue {
+		if id != taskID {
+			filtered = append(filtered, id)
+		}
+	}
+	if position < 0 {
+		position = len(filtered)
+	}
+	if position > len(filtered) {
+		position = len(filtered)
+	}
+	reordered := append(append([]string(nil), filtered[:position]...), append([]string{taskID}, filtered[position:]...)...)
+	m.applyQueueOrder(reordered)
+	return nil
+}
+
 // paginateQueueStatus 按 CreatedAt 队列顺序分页返回 waiting/paused 任务。
 func (m *Manager) paginateQueueStatus(ctx context.Context, offset, limit int, statuses ...task.Status) ([]*task.Task, error) {
 	if limit <= 0 {

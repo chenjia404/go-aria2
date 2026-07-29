@@ -216,15 +216,23 @@ func (s *Service) addURI(ctx context.Context, params []any) (any, error) {
 		uris = append(uris, uri)
 	}
 
+	position := -1
+	rest := params[1:]
+	if pos, ok, trimmed := parseOptionalTrailingPosition(rest); ok {
+		position = pos
+		rest = trimmed
+	}
+
 	options := map[string]string{}
-	if len(params) >= 2 {
-		options = parseOptions(params[1])
+	if len(rest) >= 1 {
+		options = parseOptions(rest[0])
 	}
 
 	input := task.AddTaskInput{
-		URIs:    uris,
-		SaveDir: options["dir"],
-		Options: options,
+		URIs:          uris,
+		SaveDir:       options["dir"],
+		Options:       options,
+		QueuePosition: position,
 	}
 	created, err := s.manager.Add(ctx, input)
 	if err != nil {
@@ -234,16 +242,17 @@ func (s *Service) addURI(ctx context.Context, params []any) (any, error) {
 }
 
 func (s *Service) addTorrent(ctx context.Context, params []any) (any, error) {
-	payload, uris, options, err := parseAddTorrentParams(params)
+	payload, uris, options, position, err := parseAddTorrentParams(params)
 	if err != nil {
 		return nil, err
 	}
 
 	created, err := s.manager.Add(ctx, task.AddTaskInput{
-		Torrent: payload,
-		URIs:    uris,
-		SaveDir: options["dir"],
-		Options: options,
+		Torrent:       payload,
+		URIs:          uris,
+		SaveDir:       options["dir"],
+		Options:       options,
+		QueuePosition: position,
 	})
 	if err != nil {
 		return nil, err

@@ -160,6 +160,12 @@ func (m *Manager) Add(ctx context.Context, input task.AddTaskInput) (*task.Task,
 	m.driverByTaskID[created.ID] = driver
 	m.mu.Unlock()
 
+	if input.QueuePosition >= 0 {
+		if err := m.insertTaskAtQueuePosition(created.GID, input.QueuePosition); err != nil {
+			return nil, err
+		}
+	}
+
 	addPaused := m.startPaused || parsePauseOption(input.Options)
 	if addPaused {
 		if err := driver.Pause(ctx, created.ID, false); err != nil {

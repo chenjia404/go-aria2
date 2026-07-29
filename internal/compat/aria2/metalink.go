@@ -10,34 +10,40 @@ import (
 )
 
 // parseAddMetalinkParams 解析 aria2.addMetalink 参数（与 addTorrent 载荷格式一致）。
-func parseAddMetalinkParams(params []any) (payload []byte, options map[string]string, err error) {
+func parseAddMetalinkParams(params []any) (payload []byte, options map[string]string, position int, err error) {
+	position = -1
 	if len(params) == 0 {
-		return nil, nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "metalink is required")
+		return nil, nil, position, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "metalink is required")
 	}
 
 	payload, err = decodeTorrentPayload(params[0])
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, position, err
 	}
 
 	options = map[string]string{}
-	if len(params) >= 2 {
-		switch second := params[1].(type) {
+	rest := params[1:]
+	if pos, ok, trimmed := parseOptionalTrailingPosition(rest); ok {
+		position = pos
+		rest = trimmed
+	}
+	if len(rest) >= 1 {
+		switch second := rest[0].(type) {
 		case nil:
 		case map[string]any:
 			options = parseOptions(second)
 		case []any:
 			// aria2 三参数形式的 URI 列表对 metalink 无意义，忽略。
-			if len(params) >= 3 {
-				options = parseOptions(params[2])
+			if len(rest) >= 2 {
+				options = parseOptions(rest[1])
 			}
 		default:
-			if params[1] != nil {
-				return nil, nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "second param must be options object or null")
+			if rest[0] != nil {
+				return nil, nil, position, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "second param must be options object or null")
 			}
 		}
 	}
-	return payload, options, nil
+	return payload, options, position, nil
 }
 
 func metalinkFilesToAddInputs(files []metalink.File, options map[string]string) ([]task.AddTaskInput, error) {
@@ -67,7 +73,7 @@ func metalinkFilesToAddInputs(files []metalink.File, options map[string]string) 
 }
 
 func (s *Service) addMetalink(ctx context.Context, params []any) (any, error) {
-	payload, options, err := parseAddMetalinkParams(params)
+	payload, options, position, err := parseAddMetalinkParams(params)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +89,10 @@ func (s *Service) addMetalink(ctx context.Context, params []any) (any, error) {
 	}
 
 	gids := make([]string, 0, len(inputs))
-	for _, input := range inputs {
+	for i, input := range inputs {
+		if i == 0 && position >= 0 {
+			input.QueuePosition = position
+		}
 		created, err := s.manager.Add(ctx, input)
 		if err != nil {
 			return nil, err

@@ -62,43 +62,67 @@ func bytesFromAnySlice(values []any) ([]byte, error) {
 }
 
 // parseAddTorrentParams 解析 aria2.addTorrent 参数，兼容两参数与三参数调用。
-func parseAddTorrentParams(params []any) (payload []byte, uris []string, options map[string]string, err error) {
+func parseAddTorrentParams(params []any) (payload []byte, uris []string, options map[string]string, position int, err error) {
+	position = -1
 	if len(params) == 0 {
-		return nil, nil, nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "torrent is required")
+		return nil, nil, nil, position, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "torrent is required")
 	}
 
 	payload, err = decodeTorrentPayload(params[0])
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, position, err
 	}
 
 	options = map[string]string{}
 	if len(params) == 1 {
-		return payload, nil, options, nil
+		return payload, nil, options, position, nil
 	}
 
-	switch second := params[1].(type) {
-	case nil:
-		if len(params) >= 3 {
-			options = parseOptions(params[2])
-		}
-	case map[string]any:
-		options = parseOptions(second)
-	case []any:
-		uris = parseStringList(second)
-		if len(params) >= 3 {
-			options = parseOptions(params[2])
-		}
-	default:
-		// JSON 解码后 null 为 nil；部分客户端传空字符串等非法类型
-		if params[1] == nil {
-			if len(params) >= 3 {
-				options = parseOptions(params[2])
+	rest := params[1:]
+	if pos, ok, trimmed := parseOptionalTrailingPosition(rest); ok {
+		position = pos
+		rest = trimmed
+	}
+
+	switch {
+	case len(rest) == 0:
+	case len(rest) == 1:
+		switch second := rest[0].(type) {
+		case nil:
+		case map[string]any:
+			options = parseOptions(second)
+		case []any:
+			uris = parseStringList(second)
+		default:
+			if rest[0] != nil {
+				return nil, nil, nil, position, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "second param must be options object, uri array, or null")
 			}
-			break
 		}
-		return nil, nil, nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "second param must be options object, uri array, or null")
+	case len(rest) >= 2:
+		uris = parseStringList(rest[0])
+		options = parseOptions(rest[1])
+	default:
 	}
 
-	return payload, uris, options, nil
+	return payload, uris, options, position, nil
+}
+
+// parseOptionalTrailingPosition 解析末尾可选的 position 整数参数。
+func parseOptionalTrailingPosition(params []any) (position int, ok bool, trimmed []any) {
+	if len(params) == 0 {
+		return 0, false, params
+	}
+	last := params[len(params)-1]
+	switch value := last.(type) {
+	case float64:
+		return int(value), true, params[:len(params)-1]
+	case int:
+		return value, true, params[:len(params)-1]
+	case string:
+		var parsed int
+		if _, err := fmt.Sscanf(value, "%d", &parsed); err == nil {
+			return parsed, true, params[:len(params)-1]
+		}
+	}
+	return 0, false, params
 }
