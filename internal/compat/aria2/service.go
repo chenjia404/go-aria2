@@ -551,7 +551,8 @@ func (s *Service) changeOption(ctx context.Context, params []any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return updated.GID, nil
+	_ = updated
+	return "OK", nil
 }
 
 func (s *Service) getGlobalOption() map[string]string {
