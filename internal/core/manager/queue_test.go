@@ -60,4 +60,7 @@ func TestResolveQueueIndexModes(t *testing.T) {
 	if got, err := resolveQueueIndex(1, 5, 0, "POS_END"); err != nil || got != 4 {
 		t.Fatalf("POS_END: got %d err %v", got, err)
 	}
+	if got, err := resolveQueueIndex(4, 10, -2, "POS_END"); err != nil || got != 7 {
+		t.Fatalf("POS_END negative offset: got %d err %v", got, err)
+	}
 }

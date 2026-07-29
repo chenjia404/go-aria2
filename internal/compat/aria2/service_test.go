@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/chenjia404/go-aria2/internal/core/manager"
@@ -13,6 +14,7 @@ import (
 )
 
 type rpcStubDriver struct {
+	added []*task.AddTaskInput
 	tasks map[string]*task.Task
 }
 
@@ -26,19 +28,38 @@ func (d *rpcStubDriver) CanHandle(input task.AddTaskInput) bool { return true }
 
 func (d *rpcStubDriver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, error) {
 	_ = ctx
+
+	cloned := input
+	cloned.Options = cloneOptionMap(input.Options)
+	cloned.Meta = cloneOptionMap(input.Meta)
+	d.added = append(d.added, &cloned)
+
 	id := fmt.Sprintf("task-%d", len(d.tasks)+1)
 	name := input.Name
 	if name == "" {
-		name = "download.bin"
+		if len(input.Torrent) > 0 {
+			name = "test.bin"
+		} else {
+			name = "download.bin"
+		}
 	}
 	uris := append([]string(nil), input.URIs...)
 	if input.URI != "" {
 		uris = append([]string{input.URI}, uris...)
 	}
+	if len(uris) == 0 && len(input.Torrent) == 0 {
+		uris = []string{"http://localhost/placeholder"}
+	}
+
+	protocol := task.ProtocolHTTP
+	if len(input.Torrent) > 0 {
+		protocol = task.ProtocolBT
+	}
+
 	item := &task.Task{
 		ID:       id,
 		GID:      fmt.Sprintf("gid-%d", len(d.tasks)+1),
-		Protocol: task.ProtocolHTTP,
+		Protocol: protocol,
 		Name:     name,
 		Status:   task.StatusWaiting,
 		SaveDir:  input.SaveDir,
@@ -50,6 +71,12 @@ func (d *rpcStubDriver) Add(ctx context.Context, input task.AddTaskInput) (*task
 		}},
 		Options: cloneOptionMap(input.Options),
 		Meta:    cloneOptionMap(input.Meta),
+	}
+	if len(input.Torrent) > 0 {
+		if item.Meta == nil {
+			item.Meta = map[string]string{}
+		}
+		item.Meta["bt.source.torrentBytes"] = "true"
 	}
 	d.tasks[item.ID] = item.Clone()
 	return item.Clone(), nil
@@ -148,6 +175,35 @@ func (d *rpcStubDriver) ChangeOption(ctx context.Context, taskID string, opts ma
 	for key, value := range opts {
 		item.Options[key] = value
 	}
+	if dir := strings.TrimSpace(opts["dir"]); dir != "" {
+		item.SaveDir = dir
+	}
+	return nil
+}
+
+func (d *rpcStubDriver) ChangeURI(ctx context.Context, taskID string, fileIndex int, delURIs, addURIs []string, position int) error {
+	_ = ctx
+	_ = position
+	item := d.tasks[taskID]
+	if item == nil || len(item.Files) == 0 {
+		return manager.ErrTaskNotFound
+	}
+	idx := fileIndex - 1
+	if idx < 0 || idx >= len(item.Files) {
+		return fmt.Errorf("file not found")
+	}
+	uris := append([]string(nil), item.Files[idx].URIs...)
+	for _, delURI := range delURIs {
+		filtered := uris[:0]
+		for _, uri := range uris {
+			if uri != delURI {
+				filtered = append(filtered, uri)
+			}
+		}
+		uris = filtered
+	}
+	uris = append(uris, addURIs...)
+	item.Files[idx].URIs = uris
 	return nil
 }
 
