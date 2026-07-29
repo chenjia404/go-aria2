@@ -26,6 +26,7 @@ type Options struct {
 	UploadSlots          int
 	MaxSources           int
 	StatePath            string
+	// AICHEnable 与 SourceExchangeEnable 为预留配置项；当前 goed2k 在协议层内建处理，尚无独立开关。
 	AICHEnable           bool
 	SourceExchangeEnable bool
 }
@@ -40,12 +41,10 @@ type state struct {
 
 // Driver 使用 goed2k 作为 ED2K 协议实现�?
 type Driver struct {
-	mu                   sync.RWMutex
-	client               *goed2k.Client
-	tasks                map[string]*state
-	statePath            string
-	aichEnable           bool
-	sourceExchangeEnable bool
+	mu        sync.RWMutex
+	client    *goed2k.Client
+	tasks     map[string]*state
+	statePath string
 }
 
 // New 创建 ED2K 驱动�?
@@ -76,11 +75,9 @@ func New(opts Options) (*Driver, error) {
 	}
 
 	return &Driver{
-		client:               client,
-		tasks:                make(map[string]*state),
-		statePath:            opts.StatePath,
-		aichEnable:           opts.AICHEnable,
-		sourceExchangeEnable: opts.SourceExchangeEnable,
+		client:    client,
+		tasks:     make(map[string]*state),
+		statePath: opts.StatePath,
 	}, nil
 }
 

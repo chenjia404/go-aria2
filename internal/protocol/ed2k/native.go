@@ -8,6 +8,7 @@ import (
 )
 
 // GetED2KSources 返回 ED2K 任务已知源地址（native.getEd2kSources）。
+// 合并链接内静态源（s=）与 goed2k 运行时发现的 peer 端点。
 func (d *Driver) GetED2KSources(ctx context.Context, taskID string) ([]string, error) {
 	_ = ctx
 	d.mu.RLock()
@@ -21,19 +22,34 @@ func (d *Driver) GetED2KSources(ctx context.Context, taskID string) ([]string, e
 	if err != nil {
 		return nil, err
 	}
-	if raw := strings.TrimSpace(item.Meta["ed2k.sources"]); raw != "" {
-		parts := strings.Split(raw, "\n")
-		out := make([]string, 0, len(parts))
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if part != "" {
-				out = append(out, part)
-			}
+
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+
+	add := func(addr string) {
+		addr = strings.TrimSpace(addr)
+		if addr == "" {
+			return
 		}
-		return out, nil
+		if _, ok := seen[addr]; ok {
+			return
+		}
+		seen[addr] = struct{}{}
+		out = append(out, addr)
 	}
-	if strings.TrimSpace(st.uri) != "" {
-		return []string{st.uri}, nil
+
+	if raw := strings.TrimSpace(item.Meta["ed2k.sources"]); raw != "" {
+		for _, part := range strings.Split(raw, "\n") {
+			add(part)
+		}
 	}
-	return []string{}, nil
+
+	handle := d.client.FindTransfer(st.hash)
+	if handle.IsValid() {
+		for _, peer := range handle.GetPeersInfo() {
+			add(peer.Endpoint.String())
+		}
+	}
+
+	return out, nil
 }
