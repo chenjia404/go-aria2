@@ -27,6 +27,7 @@ func NewService(mgr *manager.Manager, rpcSecret string) *Service {
 	methods := []string{
 		"aria2.addUri",
 		"aria2.addTorrent",
+		"aria2.addMetalink",
 		"aria2.remove",
 		"aria2.forceRemove",
 		"aria2.pause",
@@ -96,6 +97,8 @@ func (s *Service) invokeWithoutAuth(ctx context.Context, method string, params [
 		return s.addURI(ctx, params)
 	case "aria2.addTorrent":
 		return s.addTorrent(ctx, params)
+	case "aria2.addMetalink":
+		return s.addMetalink(ctx, params)
 	case "aria2.remove":
 		return s.remove(ctx, params, false)
 	case "aria2.forceRemove":

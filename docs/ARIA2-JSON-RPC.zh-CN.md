@@ -178,6 +178,19 @@
 
 ---
 
+### 6.2.1 `aria2.addMetalink`
+
+| 索引 | 名称 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| `0` | metalink | string / object / array | 是 | Metalink XML 载荷，编码规则同 `addTorrent`（Base64 / Buffer / 字节数组） |
+| `1` | options | object | 否 | 任务选项，如 `dir`、`checksum` 会应用到每个文件 |
+
+**说明：** 解析 Metalink 3/4 XML，为每个 `<file>` 创建独立任务。HTTP(S) 多 URL 作为镜像；`magnet:` 走 BT；`checksum` 写入任务选项。
+
+**响应 `result`：** **array[string]**，各新任务 GID 列表。
+
+---
+
 ### 6.3 `aria2.remove` / `aria2.forceRemove`
 
 | 索引 | 名称 | 类型 | 必填 | 说明 |

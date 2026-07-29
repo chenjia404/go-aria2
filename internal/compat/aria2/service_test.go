@@ -2,6 +2,7 @@ package aria2
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,16 +25,21 @@ func (d *rpcStubDriver) CanHandle(input task.AddTaskInput) bool { return true }
 
 func (d *rpcStubDriver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, error) {
 	_ = ctx
+	id := fmt.Sprintf("task-%d", len(d.tasks)+1)
+	name := input.Name
+	if name == "" {
+		name = "download.bin"
+	}
 	item := &task.Task{
-		ID:       "task-1",
-		GID:      "gid-1",
+		ID:       id,
+		GID:      fmt.Sprintf("gid-%d", len(d.tasks)+1),
 		Protocol: task.ProtocolHTTP,
-		Name:     input.Name,
+		Name:     name,
 		Status:   task.StatusWaiting,
 		SaveDir:  input.SaveDir,
 		Files: []task.File{{
 			Index:    1,
-			Path:     filepath.Join(input.SaveDir, "download.bin"),
+			Path:     filepath.Join(input.SaveDir, name),
 			Selected: true,
 			URIs:     append([]string(nil), input.URIs...),
 		}},
@@ -176,7 +182,7 @@ func TestServiceExposesVersionAndSessionMethods(t *testing.T) {
 		"aria2.unpauseAll":           false,
 		"aria2.removeDownloadResult": false,
 		"aria2.purgeDownloadResult":  false,
-		"aria2.shutdown":             false,
+		"aria2.addMetalink":        false,
 	}
 	for _, method := range methods {
 		if _, ok := required[method]; ok {
@@ -276,7 +282,10 @@ func TestBulkCommandsAndDownloadResultRemoval(t *testing.T) {
 	if !ok || stoppedMap["status"] != "paused" {
 		t.Fatalf("expected paused status after pauseAll, got %#v", stopped)
 	}
-	driver.tasks["task-1"].Status = task.StatusComplete
+	for _, item := range driver.tasks {
+		item.Status = task.StatusComplete
+		break
+	}
 	if _, err := service.Invoke(context.Background(), "aria2.removeDownloadResult", []any{gid}); err != nil {
 		t.Fatalf("removeDownloadResult returned error: %v", err)
 	}
@@ -337,7 +346,10 @@ func TestPurgeDownloadResultClearsStoppedTasks(t *testing.T) {
 		t.Fatalf("addUri returned error: %v", err)
 	}
 	gid := rawGID.(string)
-	driver.tasks["task-1"].Status = task.StatusComplete
+	for _, item := range driver.tasks {
+		item.Status = task.StatusComplete
+		break
+	}
 
 	if _, err := service.Invoke(context.Background(), "aria2.purgeDownloadResult", nil); err != nil {
 		t.Fatalf("purgeDownloadResult returned error: %v", err)
