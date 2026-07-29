@@ -20,6 +20,7 @@ import (
 	"github.com/chenjia404/go-aria2/internal/protocol/ed2k"
 	"github.com/chenjia404/go-aria2/internal/rpc/httpapi"
 	rpcserver "github.com/chenjia404/go-aria2/internal/rpc/jsonrpc"
+	"github.com/chenjia404/go-aria2/internal/rpc/xmlrpc"
 )
 
 // runDaemon 启动守护进程。
@@ -125,6 +126,12 @@ func runDaemon(args []string) error {
 	}
 	rpcHandler := rpcserver.NewServer(service, rpcOpts)
 	mux.Handle("/jsonrpc", rpcHandler)
+	xmlrpcHandler := xmlrpc.NewServer(service, xmlrpc.Options{
+		MaxRequestSize: cfg.RPCMaxRequestSize,
+		AllowOriginAll: cfg.RPCAllowOriginAll,
+	})
+	mux.Handle("/xmlrpc", xmlrpcHandler)
+	mux.Handle("/rpc", xmlrpcHandler)
 	if cfg.EnableWebSocket {
 		mux.Handle("/ws", rpcHandler)
 	}
