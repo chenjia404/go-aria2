@@ -31,6 +31,10 @@ func (d *rpcStubDriver) Add(ctx context.Context, input task.AddTaskInput) (*task
 	if name == "" {
 		name = "download.bin"
 	}
+	uris := append([]string(nil), input.URIs...)
+	if input.URI != "" {
+		uris = append([]string{input.URI}, uris...)
+	}
 	item := &task.Task{
 		ID:       id,
 		GID:      fmt.Sprintf("gid-%d", len(d.tasks)+1),
@@ -42,9 +46,10 @@ func (d *rpcStubDriver) Add(ctx context.Context, input task.AddTaskInput) (*task
 			Index:    1,
 			Path:     filepath.Join(input.SaveDir, name),
 			Selected: true,
-			URIs:     append([]string(nil), input.URIs...),
+			URIs:     uris,
 		}},
 		Options: cloneOptionMap(input.Options),
+		Meta:    cloneOptionMap(input.Meta),
 	}
 	d.tasks[item.ID] = item.Clone()
 	return item.Clone(), nil

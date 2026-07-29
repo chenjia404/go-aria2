@@ -151,6 +151,7 @@ func runDaemon(args []string) error {
 	rpcListenAddr := listenAddr(cfg.RPCListenPort, cfg.RPCListenAll)
 	if cfg.ED2KEnable && ed2kDriver != nil {
 		gw := ed2k.NewHTTPGateway(ed2kDriver, cfg.Dir, rpcListenAddr, daemonStarted)
+		service.SetED2KNativeAPI(aria2.NewED2KNativeFromGateway(gw))
 		mux.Handle("/api/", httpapi.NewRouter(&httpapi.Server{
 			Log:                logger,
 			Gateway:            gw,
