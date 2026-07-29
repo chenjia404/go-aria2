@@ -13,6 +13,11 @@ import (
 
 // 与真实 aria2 daemon 并行调用 go-aria2，比对 RPC 响应结构与关键字段。
 
+const (
+	sampleTorrentB64 = "ZDg6YW5ub3VuY2UxNDpodHRwOi8vdHJhY2tlcjEzOmNyZWF0aW9uIGRhdGVpMTcxMjEyMzQ1NmU0OmluZm9kNjpsZW5ndGhpMTIzZTQ6bmFtZTg6dGVzdC5iaW4xMjpwaWVjZSBsZW5ndGhpMjYyMTQ0ZTY6cGllY2VzMjA6MTIzNDU2Nzg5MDEyMzQ1Njc4OTBlZQ=="
+	sampleMetalinkB64 = "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPG1ldGFsaW5rIHhtbG5zPSJ1cm46aWV0ZjpwYXJhbXM6eG1sOm5zOm1ldGFsaW5rIj4KICA8ZmlsZSBuYW1lPSJhLmJpbiI+CiAgICA8dXJsPmh0dHA6Ly9leGFtcGxlLmNvbS9hLmJpbjwvdXJsPgogIDwvZmlsZT4KICA8ZmlsZSBuYW1lPSJiLmJpbiI+CiAgICA8dXJsPmh0dHA6Ly9leGFtcGxlLmNvbS9iLmJpbjwvdXJsPgogIDwvZmlsZT4KPC9tZXRhbGluaz4="
+)
+
 func TestCompareAria2_PingAndVersion(t *testing.T) {
 	work := t.TempDir()
 	secret := "compare-secret"
@@ -53,7 +58,8 @@ func TestCompareAria2_ListMethods(t *testing.T) {
 
 	required := []string{
 		"aria2.addUri", "aria2.addTorrent", "aria2.addMetalink",
-		"aria2.remove", "aria2.pause", "aria2.unpause",
+		"aria2.remove", "aria2.pause", "aria2.unpause", "aria2.pauseAll", "aria2.unpauseAll",
+		"aria2.removeDownloadResult", "aria2.purgeDownloadResult",
 		"aria2.tellStatus", "aria2.tellActive", "aria2.tellWaiting", "aria2.tellStopped",
 		"aria2.getOption", "aria2.changeOption", "aria2.changePosition",
 		"aria2.getGlobalOption", "aria2.changeGlobalOption", "aria2.getGlobalStat",
@@ -213,6 +219,248 @@ func TestCompareAria2_ChangePosition(t *testing.T) {
 
 	compareIntResult(t, ctx, aria2, goAria, "aria2.changePosition", aria2GIDs[2], -1, "POS_CUR", goGIDs[2])
 	compareIntResult(t, ctx, aria2, goAria, "aria2.changePosition", aria2GIDs[2], 0, "POS_SET", goGIDs[2])
+}
+
+func TestCompareAria2_PauseAllAndForcePauseAll(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-pauseall"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/pauseall.bin"}, map[string]any{"pause": "true"}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.pauseAll"), d.name+" pauseAll"); got != "OK" {
+			t.Fatalf("%s pauseAll returned %q", d.name, got)
+		}
+		status := decodeJSON[map[string]any](t, mustCall(t, ctx, d, "aria2.tellStatus", gid), d.name+" paused")
+		if status["status"] != "paused" {
+			t.Fatalf("%s expected paused after pauseAll, got %v", d.name, status["status"])
+		}
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.forcePauseAll"), d.name+" forcePauseAll"); got != "OK" {
+			t.Fatalf("%s forcePauseAll returned %q", d.name, got)
+		}
+	}
+}
+
+func TestCompareAria2_TellWaiting(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-waiting"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	for i := range 3 {
+		params := []any{[]any{fmt.Sprintf("http://example.com/wait-%d.bin", i)}, map[string]any{"pause": "true"}}
+		mustCallSlice(t, ctx, aria2, "aria2.addUri", params)
+		mustCallSlice(t, ctx, goAria, "aria2.addUri", params)
+	}
+
+	aria2Waiting := decodeJSON[[]map[string]any](t, mustCall(t, ctx, aria2, "aria2.tellWaiting", 0, 10), "aria2 waiting")
+	goWaiting := decodeJSON[[]map[string]any](t, mustCall(t, ctx, goAria, "aria2.tellWaiting", 0, 10), "go waiting")
+	if len(aria2Waiting) < 3 || len(goWaiting) < 3 {
+		t.Fatalf("expected at least 3 waiting: aria2=%d go=%d", len(aria2Waiting), len(goWaiting))
+	}
+}
+
+func TestCompareAria2_AddTorrentTellStatus(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-torrent"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{sampleTorrentB64, []any{}, map[string]any{"pause": "true"}}
+	aria2GID := mustString(t, first(rawCall(t, ctx, aria2, goAria, "aria2.addTorrent", params)), "aria2 addTorrent")
+	goGID := mustString(t, second(rawCall(t, ctx, aria2, goAria, "aria2.addTorrent", params)), "go addTorrent")
+
+	aria2Status := decodeJSON[map[string]any](t, mustCall(t, ctx, aria2, "aria2.tellStatus", aria2GID), "aria2 status")
+	goStatus := decodeJSON[map[string]any](t, mustCall(t, ctx, goAria, "aria2.tellStatus", goGID), "go status")
+
+	for _, key := range []string{"gid", "status", "bittorrent"} {
+		if aria2Status[key] == nil {
+			t.Fatalf("aria2 tellStatus missing %q", key)
+		}
+		if goStatus[key] == nil {
+			t.Fatalf("go-aria2 tellStatus missing %q", key)
+		}
+	}
+	if aria2Status["status"] != goStatus["status"] {
+		t.Fatalf("status mismatch: aria2=%v go=%v", aria2Status["status"], goStatus["status"])
+	}
+}
+
+func TestCompareAria2_AddMetalink(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-metalink"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{sampleMetalinkB64, map[string]any{"pause": "true"}}
+	aria2GIDs := decodeJSON[[]string](t, first(rawCall(t, ctx, aria2, goAria, "aria2.addMetalink", params)), "aria2 metalink")
+	goGIDs := decodeJSON[[]string](t, second(rawCall(t, ctx, aria2, goAria, "aria2.addMetalink", params)), "go metalink")
+	if len(aria2GIDs) != 2 || len(goGIDs) != 2 {
+		t.Fatalf("expected 2 gids: aria2=%#v go=%#v", aria2GIDs, goGIDs)
+	}
+}
+
+func TestCompareAria2_UnpauseAll(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-unpauseall"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/unpauseall.bin"}, map[string]any{"pause": "true"}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.pauseAll"), d.name+" pauseAll"); got != "OK" {
+			t.Fatalf("%s pauseAll returned %q", d.name, got)
+		}
+		status := decodeJSON[map[string]any](t, mustCall(t, ctx, d, "aria2.tellStatus", gid), d.name+" paused")
+		if status["status"] != "paused" {
+			t.Fatalf("%s expected paused after pauseAll, got %v", d.name, status["status"])
+		}
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.unpauseAll"), d.name+" unpauseAll"); got != "OK" {
+			t.Fatalf("%s unpauseAll returned %q", d.name, got)
+		}
+		status = decodeJSON[map[string]any](t, mustCall(t, ctx, d, "aria2.tellStatus", gid), d.name+" unpaused")
+		if status["status"] != "active" {
+			t.Fatalf("%s expected active after unpauseAll, got %v", d.name, status["status"])
+		}
+	}
+}
+
+func TestCompareAria2_TellStopped(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-stopped"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/stopped.bin"}, map[string]any{"pause": "true"}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.remove", gid), d.name+" remove"); got != gid {
+			t.Fatalf("%s remove returned %q", d.name, got)
+		}
+		// aria2 在 remove 后会把任务从内存移除，tellStopped 通常为空（与官方手册一致）。
+		stopped := decodeJSON[[]map[string]any](t, mustCall(t, ctx, d, "aria2.tellStopped", 0, 10), d.name+" tellStopped")
+		if len(stopped) != 0 {
+			t.Fatalf("%s tellStopped should be empty after remove, got %#v", d.name, stopped)
+		}
+	}
+}
+
+func TestCompareAria2_PurgeDownloadResult(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-purge"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.purgeDownloadResult"), d.name+" purgeDownloadResult"); got != "OK" {
+			t.Fatalf("%s purgeDownloadResult returned %q", d.name, got)
+		}
+		stopped := decodeJSON[[]map[string]any](t, mustCall(t, ctx, d, "aria2.tellStopped", 0, 10), d.name+" tellStopped after purge")
+		if len(stopped) != 0 {
+			t.Fatalf("%s tellStopped after purge: want empty, got %#v", d.name, stopped)
+		}
+	}
+}
+
+func TestCompareAria2_GetSessionInfoAndListNotifications(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-session"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	aria2Info := decodeJSON[map[string]any](t, first(rawCall(t, ctx, aria2, goAria, "aria2.getSessionInfo", nil)), "aria2 session")
+	goInfo := decodeJSON[map[string]any](t, second(rawCall(t, ctx, aria2, goAria, "aria2.getSessionInfo", nil)), "go session")
+	for _, key := range []string{"sessionId"} {
+		if aria2Info[key] == nil || aria2Info[key] == "" {
+			t.Fatalf("aria2 getSessionInfo missing %q: %#v", key, aria2Info)
+		}
+		if goInfo[key] == nil || goInfo[key] == "" {
+			t.Fatalf("go-aria2 getSessionInfo missing %q: %#v", key, goInfo)
+		}
+	}
+
+	aria2Notes := decodeJSON[[]string](t, first(rawCall(t, ctx, aria2, goAria, "system.listNotifications", nil)), "aria2 notifications")
+	goNotes := decodeJSON[[]string](t, second(rawCall(t, ctx, aria2, goAria, "system.listNotifications", nil)), "go notifications")
+	for _, method := range []string{
+		"aria2.onDownloadStart",
+		"aria2.onDownloadComplete",
+		"aria2.onDownloadError",
+	} {
+		if !contains(aria2Notes, method) {
+			t.Fatalf("aria2 missing notification %s", method)
+		}
+		if !contains(goNotes, method) {
+			t.Fatalf("go-aria2 missing notification %s", method)
+		}
+	}
+}
+
+func TestCompareAria2_GetOption(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-getoption"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/getoption.bin"}, map[string]any{"pause": "true", "out": "getoption.bin"}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		opts := decodeJSON[map[string]string](t, mustCall(t, ctx, d, "aria2.getOption", gid), d.name+" getOption")
+		if opts["out"] != "getoption.bin" {
+			t.Fatalf("%s out mismatch: %#v", d.name, opts)
+		}
+		status := decodeJSON[map[string]any](t, mustCall(t, ctx, d, "aria2.tellStatus", gid), d.name+" tellStatus")
+		if status["status"] != "paused" {
+			t.Fatalf("%s expected paused status, got %#v", d.name, status["status"])
+		}
+	}
+}
+
+func TestCompareAria2_ShutdownReturnsOK(t *testing.T) {
+	t.Run("aria2", func(t *testing.T) {
+		work := t.TempDir()
+		d := startAria2Daemon(t, work, freeListenPort(t), "compare-shutdown-aria2")
+		ctx := context.Background()
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.shutdown"), "aria2 shutdown"); got != "OK" {
+			t.Fatalf("aria2 shutdown returned %q", got)
+		}
+	})
+	t.Run("go-aria2", func(t *testing.T) {
+		work := t.TempDir()
+		d := startGoAria2Daemon(t, work, freeListenPort(t), "compare-shutdown-go")
+		ctx := context.Background()
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.shutdown"), "go shutdown"); got != "OK" {
+			t.Fatalf("go-aria2 shutdown returned %q", got)
+		}
+	})
+}
+
+func TestCompareAria2_RemoveDownloadResult(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-remove-result"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/remove-result.bin"}, map[string]any{"pause": "true"}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		// waiting/paused 任务调用 removeDownloadResult 应失败（aria2 与 go-aria2 一致）。
+		if _, err := d.call(ctx, "aria2.removeDownloadResult", []any{gid}); err == nil {
+			t.Fatalf("%s removeDownloadResult should fail for paused task", d.name)
+		}
+	}
 }
 
 func rawCall(t *testing.T, ctx context.Context, aria2, goAria *daemonHandle, method string, params []any) (json.RawMessage, json.RawMessage) {

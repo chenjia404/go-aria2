@@ -107,6 +107,32 @@ func TestFilterHiddenOptions(t *testing.T) {
 	}
 }
 
+func TestValidateKnownOption_PositiveIntOptions(t *testing.T) {
+	t.Parallel()
+
+	if err := validateKnownOption("split", "16"); err != nil {
+		t.Fatalf("valid split rejected: %v", err)
+	}
+	if err := validateKnownOption("split", "bad"); err == nil {
+		t.Fatal("expected error for invalid split")
+	}
+	if err := validateKnownOption("seed-ratio", "1.5"); err != nil {
+		t.Fatalf("valid seed-ratio rejected: %v", err)
+	}
+	if err := validateKnownOption("seed-ratio", "foo"); err == nil {
+		t.Fatal("expected error for invalid seed-ratio")
+	}
+	if err := validateKnownOption("seed-time", "3600"); err != nil {
+		t.Fatalf("valid seed-time rejected: %v", err)
+	}
+	if err := validateKnownOption("connect-timeout", "bad"); err == nil {
+		t.Fatal("expected error for invalid connect-timeout")
+	}
+	if err := validateKnownOption("bt-request-peer-speed-limit", "300K"); err != nil {
+		t.Fatalf("valid bt-request-peer-speed-limit rejected: %v", err)
+	}
+}
+
 func TestIsValidURI(t *testing.T) {
 	t.Parallel()
 

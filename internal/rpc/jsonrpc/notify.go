@@ -26,8 +26,8 @@ func aria2NotificationsForEvent(ev manager.Event, prev map[string]taskSnap) []ma
 	switch ev.Type {
 	case manager.EventTaskAdded:
 		prev[gid] = taskSnap{Status: cur, Seeder: ev.Task.Seeder}
-		// 排队中的任务在真正进入 active 时再发 onDownloadStart，避免与 waiting→active 重复。
-		if cur == task.StatusWaiting {
+		// waiting/paused 任务在真正进入 active 时再发 onDownloadStart。
+		if cur == task.StatusWaiting || cur == task.StatusPaused {
 			return nil
 		}
 		return []map[string]any{aria2Notify("aria2.onDownloadStart", eventObj)}

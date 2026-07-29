@@ -61,6 +61,10 @@ type Task struct {
 	// 旧 session 无此字段时为 nil，按兼容路径仅使用 Options。
 	LocalOptions map[string]string `json:"localOptions,omitempty"`
 	Meta         map[string]string `json:"meta"`
+	// FollowingGID / BelongsToGID / FollowedByGIDs 对齐 aria2 tellStatus 关联下载字段。
+	FollowingGID   string   `json:"followingGID,omitempty"`
+	BelongsToGID   string   `json:"belongsToGID,omitempty"`
+	FollowedByGIDs []string `json:"followedByGIDs,omitempty"`
 	CreatedAt    time.Time         `json:"createdAt"`
 	UpdatedAt    time.Time         `json:"updatedAt"`
 }
@@ -91,6 +95,9 @@ func (t *Task) Clone() *Task {
 		cloned.LocalOptions = cloneMap(t.LocalOptions)
 	}
 	cloned.Meta = cloneMap(t.Meta)
+	if len(t.FollowedByGIDs) > 0 {
+		cloned.FollowedByGIDs = append([]string(nil), t.FollowedByGIDs...)
+	}
 	return &cloned
 }
 

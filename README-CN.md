@@ -320,17 +320,24 @@ ed2k-upload-slots=3
 | aria2 测试文件 | go-aria2 覆盖 |
 |----------------|---------------|
 | `test/Aria2ApiTest.cc` | `internal/compat/aria2/aria2_api_test.go` — 添加/删除/暂停、选项、队列位置、错误状态 |
-| `test/RpcMethodTest.cc` | `internal/compat/aria2/rpc_method_test.go` — 参数校验、无效选项、鉴权、multicall 错误 |
+| `test/RpcMethodTest.cc` | `rpc_method_test.go`、`rpc_method_progress_test.go`、`rpc_method_gid_test.go`、`rpc_method_lifecycle_test.go`、`rpc_method_changeoption_test.go`、`websocket_notify_test.go` — 参数校验、GID 错误、pause 生命周期、changeOption、WebSocket 通知 |
 
 选项校验与 aria2 对齐：
 
 - 已知选项的无效值（如 `file-allocation=foo`、`max-download-limit=badvalue`）在 `addUri` / `addTorrent` / `addMetalink` / `changeOption` / `changeGlobalOption` 时会被拒绝
 - 速度限制支持 `K` / `M` / `G` 后缀（基数 1024），存储时规范化为字节数
+- 整数类选项（`split`、`listen-port`、`seed-time`、`connect-timeout` 等）与 `seed-ratio` 在 add/change 时校验
+- 无效 GID 的 `tellStatus` / `getOption` / `changeUri` 等返回 `CodeInvalidParams`
+- `tellStatus` 中 `bittorrent.creationDate` 序列化为 JSON 数字（与 aria2 一致）
 - 全局专属选项（如 `max-overall-download-limit`）传入 `changeOption` 时静默忽略
 - 不可运行时修改的选项（如 `enable-rpc`）传入 `changeGlobalOption` 时静默忽略
 - 隐藏内部选项（如 `startup-idle-time`）不会通过 `getOption` / `getGlobalOption` 返回
 - `addUri` 要求合法 URI scheme；队列 `position` 必须为非负整数
 - `changeUri` 要求 `fileIndex >= 1`
+- `tellStatus` 对批量下载（如 `addMetalink`）返回 `followedBy` / `following` / `belongsTo`
+- `addTorrent` 在 `rpc-save-upload-metadata=true` 时将 torrent 保存为 `dir/<infohash>.torrent`
+- `aria2.forcePauseAll` 会强制暂停所有活动与等待中的任务
+- WebSocket 通知：`pause=true` 添加任务不触发 `onDownloadStart`；BT 做种结束后触发 `onDownloadComplete`
 
 与官方 aria2 daemon 的 RPC 对比集成测试（需本机已安装 `aria2c`）：
 

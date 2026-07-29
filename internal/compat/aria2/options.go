@@ -104,7 +104,8 @@ func validateKnownOption(key, value string) error {
 		if _, ok := fileAllocationValues[strings.ToLower(strings.TrimSpace(value))]; !ok {
 			return optionError(key, value)
 		}
-	case "max-download-limit", "max-upload-limit", "max-overall-download-limit", "max-overall-upload-limit":
+	case "max-download-limit", "max-upload-limit", "max-overall-download-limit", "max-overall-upload-limit",
+		"bt-request-peer-speed-limit":
 		if _, err := parseSpeedLimit(value); err != nil {
 			return optionError(key, value)
 		}
@@ -114,13 +115,27 @@ func validateKnownOption(key, value string) error {
 		if !isBoolOption(value) {
 			return optionError(key, value)
 		}
+	case "split", "max-connection-per-server", "min-split-size", "max-concurrent-downloads",
+		"listen-port", "dht-listen-port", "bt-max-peers":
+		if _, err := parsePositiveInt(value); err != nil {
+			return optionError(key, value)
+		}
+	case "seed-ratio":
+		if _, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err != nil {
+			return optionError(key, value)
+		}
+	case "seed-time", "connect-timeout", "timeout", "retry-wait":
+		if _, err := parsePositiveInt(value); err != nil {
+			return optionError(key, value)
+		}
 	}
 	return nil
 }
 
 func normalizeOptionValue(key, value string) string {
 	switch key {
-	case "max-download-limit", "max-upload-limit", "max-overall-download-limit", "max-overall-upload-limit":
+	case "max-download-limit", "max-upload-limit", "max-overall-download-limit", "max-overall-upload-limit",
+		"bt-request-peer-speed-limit":
 		if parsed, err := parseSpeedLimit(value); err == nil {
 			return strconv.FormatInt(parsed, 10)
 		}
@@ -140,6 +155,14 @@ func isBoolOption(value string) bool {
 	default:
 		return false
 	}
+}
+
+func parsePositiveInt(value string) (int64, error) {
+	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil || parsed < 0 {
+		return 0, fmt.Errorf("invalid integer")
+	}
+	return parsed, nil
 }
 
 // parseSpeedLimit 解析 aria2 风格的速度限制（支持 K/M/G 后缀，基数 1024）。

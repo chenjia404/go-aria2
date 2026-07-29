@@ -10,6 +10,8 @@ import (
 
 	"github.com/chenjia404/go-aria2/internal/core/manager"
 	"github.com/chenjia404/go-aria2/internal/core/task"
+	"github.com/chenjia404/go-aria2/internal/protocol/bt"
+	"github.com/chenjia404/go-aria2/internal/protocol/common"
 	"github.com/chenjia404/go-aria2/internal/rpc/jsonrpc"
 )
 
@@ -277,6 +279,15 @@ func (s *Service) addTorrent(ctx context.Context, params []any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if common.OptionBool(options, "rpc-save-upload-metadata", false) {
+		saveDir := created.SaveDir
+		if saveDir == "" {
+			saveDir = options["dir"]
+		}
+		if saveDir != "" {
+			_ = bt.SaveUploadedTorrentMetadata(saveDir, payload)
+		}
+	}
 	return created.GID, nil
 }
 
@@ -287,7 +298,7 @@ func (s *Service) remove(ctx context.Context, params []any, force bool) (any, er
 	}
 	removed, err := s.manager.Remove(ctx, gid, force)
 	if err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	return removed.GID, nil
 }
@@ -299,7 +310,7 @@ func (s *Service) pause(ctx context.Context, params []any, force bool) (any, err
 	}
 	paused, err := s.manager.Pause(ctx, gid, force)
 	if err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	return paused.GID, nil
 }
@@ -311,7 +322,7 @@ func (s *Service) unpause(ctx context.Context, params []any) (any, error) {
 	}
 	updated, err := s.manager.Unpause(ctx, gid)
 	if err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	return updated.GID, nil
 }
@@ -343,7 +354,7 @@ func (s *Service) removeDownloadResult(ctx context.Context, params []any) (any, 
 		return nil, err
 	}
 	if err := s.manager.RemoveDownloadResult(ctx, gid); err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	return "OK", nil
 }
@@ -408,7 +419,7 @@ func (s *Service) tellStatus(ctx context.Context, params []any) (any, error) {
 
 	item, err := s.manager.TellStatus(ctx, gid)
 	if err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	return toStatusResponse(item, keys), nil
 }
@@ -493,7 +504,7 @@ func (s *Service) getFiles(ctx context.Context, params []any) (any, error) {
 
 	files, err := s.manager.GetFiles(ctx, gid)
 	if err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	return toFilesResponse(files), nil
 }
@@ -506,7 +517,7 @@ func (s *Service) getPeers(ctx context.Context, params []any) (any, error) {
 
 	peers, err := s.manager.GetPeers(ctx, gid)
 	if err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	return toPeersResponse(peers), nil
 }
@@ -519,7 +530,7 @@ func (s *Service) getServers(ctx context.Context, params []any) (any, error) {
 
 	servers, err := s.manager.GetServers(ctx, gid)
 	if err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	return toServersResponse(servers), nil
 }
@@ -532,7 +543,7 @@ func (s *Service) getUris(ctx context.Context, params []any) (any, error) {
 
 	item, err := s.manager.TellStatus(ctx, gid)
 	if err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	return toURIsResponse(item.Files), nil
 }
@@ -545,7 +556,7 @@ func (s *Service) getOption(ctx context.Context, params []any) (any, error) {
 
 	item, err := s.manager.TellStatus(ctx, gid)
 	if err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	return toOptionResponse(item), nil
 }
@@ -574,7 +585,7 @@ func (s *Service) changeOption(ctx context.Context, params []any) (any, error) {
 
 	updated, err := s.manager.ChangeOption(ctx, gid, filtered)
 	if err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	_ = updated
 	return "OK", nil
@@ -802,7 +813,7 @@ func (s *Service) changePosition(ctx context.Context, params []any) (any, error)
 	}
 	newPos, err := s.manager.ChangePosition(ctx, gid, pos, how)
 	if err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	return newPos, nil
 }
@@ -820,11 +831,17 @@ func (s *Service) changeUri(ctx context.Context, params []any) (any, error) {
 		return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "fileIndex must be >= 1")
 	}
 	delURIs := []string{}
-	if len(params) > 2 {
+	if len(params) > 2 && params[2] != nil {
+		if _, ok := params[2].([]any); !ok {
+			return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "delURIs must be an array")
+		}
 		delURIs = parseStringList(params[2])
 	}
 	addURIs := []string{}
-	if len(params) > 3 {
+	if len(params) > 3 && params[3] != nil {
+		if _, ok := params[3].([]any); !ok {
+			return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "addURIs must be an array")
+		}
 		addURIs = parseStringList(params[3])
 	}
 	position := 0
@@ -835,7 +852,7 @@ func (s *Service) changeUri(ctx context.Context, params []any) (any, error) {
 		}
 	}
 	if err := s.manager.ChangeURI(ctx, gid, fileIndex, delURIs, addURIs, position); err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	return []any{}, nil
 }

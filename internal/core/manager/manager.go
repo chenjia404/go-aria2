@@ -457,8 +457,19 @@ func (m *Manager) EnforceSeedLimits(ctx context.Context) error {
 		if !ok {
 			continue
 		}
+		before, err := m.tellStatusByID(ctx, job.taskID)
+		if err != nil {
+			continue
+		}
 		if err := enforcer.EnforceSeedPolicy(ctx, job.taskID, effectiveSeedRatio(ratioSet, ratio), seedTime); err != nil && !errors.Is(err, ErrTaskNotFound) {
 			return err
+		}
+		updated, err := m.syncTaskByID(ctx, job.taskID, false)
+		if err != nil || updated == nil || before == nil {
+			continue
+		}
+		if before.Seeder != updated.Seeder || before.Status != updated.Status {
+			m.emit(EventTaskUpdated, updated)
 		}
 	}
 	return nil
@@ -1168,6 +1179,15 @@ func (m *Manager) storeTask(updated *task.Task, driver Driver) *task.Task {
 		}
 		if len(cloned.Meta) == 0 {
 			cloned.Meta = cloneOptions(existing.Meta)
+		}
+		if cloned.FollowingGID == "" {
+			cloned.FollowingGID = existing.FollowingGID
+		}
+		if cloned.BelongsToGID == "" {
+			cloned.BelongsToGID = existing.BelongsToGID
+		}
+		if len(cloned.FollowedByGIDs) == 0 && len(existing.FollowedByGIDs) > 0 {
+			cloned.FollowedByGIDs = append([]string(nil), existing.FollowedByGIDs...)
 		}
 		if existing.Status == cloned.Status &&
 			existing.CompletedLength == cloned.CompletedLength &&

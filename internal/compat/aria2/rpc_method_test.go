@@ -1,9 +1,13 @@
 package aria2
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/chenjia404/go-aria2/internal/core/manager"
+	"github.com/chenjia404/go-aria2/internal/core/task"
 	"github.com/chenjia404/go-aria2/internal/rpc/jsonrpc"
 )
 
@@ -157,5 +161,118 @@ func TestRpcMethod_ChangeGlobalOption_AcceptsSpeedSuffix(t *testing.T) {
 	}))
 	if changed["max-overall-download-limit"] != "102400" {
 		t.Fatalf("expected normalized speed limit 102400, got %#v", changed)
+	}
+}
+
+func TestRpcMethod_TellWaiting_Pagination(t *testing.T) {
+	t.Parallel()
+	env := newRPCTestEnv(t, manager.Options{StartPaused: true})
+	for i := 0; i < 4; i++ {
+		env.MustGID("aria2.addUri", []any{fmt.Sprintf("http://example.com/%d", i)})
+	}
+	waiting := env.MustCall("aria2.tellWaiting", 1, 2).([]map[string]any)
+	if len(waiting) != 2 {
+		t.Fatalf("expected 2 waiting tasks, got %#v", waiting)
+	}
+	empty := env.MustCall("aria2.tellWaiting", 100, 10).([]map[string]any)
+	if len(empty) != 0 {
+		t.Fatalf("expected empty slice for offset beyond range, got %#v", empty)
+	}
+}
+
+func TestRpcMethod_AddMetalink_LinksBatchDownloads(t *testing.T) {
+	t.Parallel()
+	env := newRPCTestEnv(t, manager.Options{})
+	gids := mustStringSlice(t, env.MustCall("aria2.addMetalink", sampleMetalinkBase64(), map[string]any{"pause": "true"}))
+	if len(gids) != 2 {
+		t.Fatalf("expected 2 gids, got %#v", gids)
+	}
+	leader := env.Status(gids[0])
+	followedBy, ok := leader["followedBy"].([]string)
+	if !ok || len(followedBy) != 1 || followedBy[0] != gids[1] {
+		t.Fatalf("leader followedBy: %#v", leader["followedBy"])
+	}
+	follower := env.Status(gids[1])
+	if follower["following"] != gids[0] || follower["belongsTo"] != gids[0] {
+		t.Fatalf("follower links: %#v", follower)
+	}
+}
+
+func TestRpcMethod_AddTorrent_SaveUploadMetadata(t *testing.T) {
+	t.Parallel()
+	saveDir := t.TempDir()
+	env := newRPCTestEnv(t, manager.Options{DefaultDir: saveDir})
+	env.MustGID("aria2.addTorrent", sampleTorrentBase64(), map[string]any{
+		"dir":                      saveDir,
+		"rpc-save-upload-metadata": "true",
+		"pause":                    "true",
+	})
+	entries, err := os.ReadDir(saveDir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	found := false
+	for _, entry := range entries {
+		if filepath.Ext(entry.Name()) == ".torrent" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected saved .torrent in %s, got %#v", saveDir, entries)
+	}
+}
+
+func TestRpcMethod_GetSessionInfo(t *testing.T) {
+	t.Parallel()
+	env := newRPCTestEnv(t, manager.Options{})
+	info := env.MustCall("aria2.getSessionInfo").(map[string]any)
+	if info["sessionId"] == nil || info["sessionId"] == "" {
+		t.Fatalf("expected sessionId, got %#v", info)
+	}
+}
+
+func TestRpcMethod_ChangeOption_RejectsInvalidSplit(t *testing.T) {
+	t.Parallel()
+	env := newRPCTestEnv(t, manager.Options{})
+	gid := env.MustGID("aria2.addUri", []any{"http://localhost/1"}, map[string]any{"pause": "true"})
+	env.ExpectError("aria2.changeOption", gid, map[string]any{"split": "bad"})
+}
+
+func TestRpcMethod_GatherStoppedDownloadBTMetadata(t *testing.T) {
+	t.Parallel()
+	env := newRPCTestEnv(t, manager.Options{})
+	gid := env.MustGID("aria2.addTorrent", sampleTorrentBase64(), map[string]any{"pause": "true"})
+	for _, item := range env.Driver.tasks {
+		if item.GID == gid {
+			item.Protocol = task.ProtocolBT
+			item.Name = "test.bin"
+			item.Meta = map[string]string{
+				"bt.creationDate": "1712123456",
+			}
+			item.Status = task.StatusComplete
+		}
+	}
+	status := env.Status(gid)
+	bt, ok := status["bittorrent"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected bittorrent section, got %#v", status["bittorrent"])
+	}
+	if bt["creationDate"] != int64(1712123456) {
+		t.Fatalf("creationDate: %#v", bt["creationDate"])
+	}
+}
+
+func TestRpcMethod_SystemMulticall_Success(t *testing.T) {
+	t.Parallel()
+	env := newRPCTestEnv(t, manager.Options{})
+	calls := []any{
+		map[string]any{"methodName": "aria2.ping", "params": []any{}},
+		map[string]any{"methodName": "aria2.getVersion", "params": []any{}},
+	}
+	raw := env.MustCall("system.multicall", calls)
+	results, ok := raw.([]any)
+	if !ok || len(results) != 2 {
+		t.Fatalf("unexpected multicall result: %#v", raw)
 	}
 }

@@ -71,7 +71,36 @@ func (m *Manager) ChangeURI(ctx context.Context, gid string, fileIndex int, delU
 
 // ForcePauseAll 强制暂停所有活动与等待中的任务（aria2.forcePauseAll）。
 func (m *Manager) ForcePauseAll(ctx context.Context) error {
-	return m.SaveSession(ctx)
+	return m.pauseAll(ctx, true)
+}
+
+// LinkBatchDownloads 为同一批次（如 addMetalink）创建的任务设置 aria2 风格关联 GID。
+func (m *Manager) LinkBatchDownloads(gids []string) {
+	if len(gids) <= 1 {
+		return
+	}
+	leader := gids[0]
+	followers := append([]string(nil), gids[1:]...)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, item := range m.tasks {
+		if item == nil {
+			continue
+		}
+		switch item.GID {
+		case leader:
+			item.FollowedByGIDs = append([]string(nil), followers...)
+		default:
+			for _, follower := range followers {
+				if item.GID == follower {
+					item.FollowingGID = leader
+					item.BelongsToGID = leader
+					break
+				}
+			}
+		}
+	}
 }
 
 // insertTaskAtQueuePosition 将 waiting/paused 任务插入队列指定位置（aria2 add* position）。

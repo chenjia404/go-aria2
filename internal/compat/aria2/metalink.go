@@ -105,5 +105,6 @@ func (s *Service) addMetalink(ctx context.Context, params []any) (any, error) {
 		}
 		gids = append(gids, created.GID)
 	}
+	s.manager.LinkBatchDownloads(gids)
 	return gids, nil
 }
