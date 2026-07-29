@@ -133,6 +133,37 @@ func (m *Manager) paginateQueueStatus(ctx context.Context, offset, limit int, st
 	return items[offset:end], nil
 }
 
+// paginateStopped 按停止时间（UpdatedAt）倒序分页返回 stopped 任务。
+func (m *Manager) paginateStopped(ctx context.Context, offset, limit int, statuses ...task.Status) ([]*task.Task, error) {
+	if limit <= 0 {
+		return []*task.Task{}, nil
+	}
+	items, err := m.listByStatuses(ctx, statuses...)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].UpdatedAt.Equal(items[j].UpdatedAt) {
+			return items[i].GID < items[j].GID
+		}
+		return items[i].UpdatedAt.Before(items[j].UpdatedAt)
+	})
+	if offset < 0 {
+		offset = len(items) + offset
+		if offset < 0 {
+			offset = 0
+		}
+	}
+	if offset >= len(items) {
+		return []*task.Task{}, nil
+	}
+	end := offset + limit
+	if end > len(items) {
+		end = len(items)
+	}
+	return items[offset:end], nil
+}
+
 func (m *Manager) orderedQueueTaskIDs() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

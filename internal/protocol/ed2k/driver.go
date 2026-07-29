@@ -19,13 +19,15 @@ import (
 
 // Options 控制 ED2K 驱动底层 goed2k Client 的初始化�?
 type Options struct {
-	ListenPort   int
-	UDPPort      int
-	EnableDHT    bool
-	EnableServer bool
-	UploadSlots  int
-	MaxSources   int
-	StatePath    string
+	ListenPort           int
+	UDPPort              int
+	EnableDHT            bool
+	EnableServer         bool
+	UploadSlots          int
+	MaxSources           int
+	StatePath            string
+	AICHEnable           bool
+	SourceExchangeEnable bool
 }
 
 type state struct {
@@ -38,10 +40,12 @@ type state struct {
 
 // Driver 使用 goed2k 作为 ED2K 协议实现�?
 type Driver struct {
-	mu        sync.RWMutex
-	client    *goed2k.Client
-	tasks     map[string]*state
-	statePath string
+	mu                   sync.RWMutex
+	client               *goed2k.Client
+	tasks                map[string]*state
+	statePath            string
+	aichEnable           bool
+	sourceExchangeEnable bool
 }
 
 // New 创建 ED2K 驱动�?
@@ -72,9 +76,11 @@ func New(opts Options) (*Driver, error) {
 	}
 
 	return &Driver{
-		client:    client,
-		tasks:     make(map[string]*state),
-		statePath: opts.StatePath,
+		client:               client,
+		tasks:                make(map[string]*state),
+		statePath:            opts.StatePath,
+		aichEnable:           opts.AICHEnable,
+		sourceExchangeEnable: opts.SourceExchangeEnable,
 	}, nil
 }
 
