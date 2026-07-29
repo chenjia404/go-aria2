@@ -231,6 +231,7 @@ func (s *Service) addURI(ctx context.Context, params []any) (any, error) {
 	input := task.AddTaskInput{
 		URIs:          uris,
 		SaveDir:       options["dir"],
+		Name:          options["out"],
 		Options:       options,
 		QueuePosition: position,
 	}
@@ -251,6 +252,7 @@ func (s *Service) addTorrent(ctx context.Context, params []any) (any, error) {
 		Torrent:       payload,
 		URIs:          uris,
 		SaveDir:       options["dir"],
+		Name:          options["out"],
 		Options:       options,
 		QueuePosition: position,
 	})
