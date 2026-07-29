@@ -813,7 +813,7 @@ func (s *Service) changePosition(ctx context.Context, params []any) (any, error)
 	}
 	newPos, err := s.manager.ChangePosition(ctx, gid, pos, how)
 	if err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	return newPos, nil
 }
@@ -831,11 +831,17 @@ func (s *Service) changeUri(ctx context.Context, params []any) (any, error) {
 		return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "fileIndex must be >= 1")
 	}
 	delURIs := []string{}
-	if len(params) > 2 {
+	if len(params) > 2 && params[2] != nil {
+		if _, ok := params[2].([]any); !ok {
+			return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "delURIs must be an array")
+		}
 		delURIs = parseStringList(params[2])
 	}
 	addURIs := []string{}
-	if len(params) > 3 {
+	if len(params) > 3 && params[3] != nil {
+		if _, ok := params[3].([]any); !ok {
+			return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "addURIs must be an array")
+		}
 		addURIs = parseStringList(params[3])
 	}
 	position := 0
@@ -846,7 +852,7 @@ func (s *Service) changeUri(ctx context.Context, params []any) (any, error) {
 		}
 	}
 	if err := s.manager.ChangeURI(ctx, gid, fileIndex, delURIs, addURIs, position); err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	return []any{}, nil
 }
