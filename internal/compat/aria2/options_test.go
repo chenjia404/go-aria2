@@ -128,6 +128,9 @@ func TestValidateKnownOption_PositiveIntOptions(t *testing.T) {
 	if err := validateKnownOption("connect-timeout", "bad"); err == nil {
 		t.Fatal("expected error for invalid connect-timeout")
 	}
+	if err := validateKnownOption("bt-request-peer-speed-limit", "300K"); err != nil {
+		t.Fatalf("valid bt-request-peer-speed-limit rejected: %v", err)
+	}
 }
 
 func TestIsValidURI(t *testing.T) {

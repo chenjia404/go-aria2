@@ -104,7 +104,8 @@ func validateKnownOption(key, value string) error {
 		if _, ok := fileAllocationValues[strings.ToLower(strings.TrimSpace(value))]; !ok {
 			return optionError(key, value)
 		}
-	case "max-download-limit", "max-upload-limit", "max-overall-download-limit", "max-overall-upload-limit":
+	case "max-download-limit", "max-upload-limit", "max-overall-download-limit", "max-overall-upload-limit",
+		"bt-request-peer-speed-limit":
 		if _, err := parseSpeedLimit(value); err != nil {
 			return optionError(key, value)
 		}
@@ -115,7 +116,7 @@ func validateKnownOption(key, value string) error {
 			return optionError(key, value)
 		}
 	case "split", "max-connection-per-server", "min-split-size", "max-concurrent-downloads",
-		"listen-port", "dht-listen-port", "bt-max-peers", "bt-request-peer-speed-limit":
+		"listen-port", "dht-listen-port", "bt-max-peers":
 		if _, err := parsePositiveInt(value); err != nil {
 			return optionError(key, value)
 		}
@@ -133,7 +134,8 @@ func validateKnownOption(key, value string) error {
 
 func normalizeOptionValue(key, value string) string {
 	switch key {
-	case "max-download-limit", "max-upload-limit", "max-overall-download-limit", "max-overall-upload-limit":
+	case "max-download-limit", "max-upload-limit", "max-overall-download-limit", "max-overall-upload-limit",
+		"bt-request-peer-speed-limit":
 		if parsed, err := parseSpeedLimit(value); err == nil {
 			return strconv.FormatInt(parsed, 10)
 		}

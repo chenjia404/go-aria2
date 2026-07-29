@@ -457,8 +457,19 @@ func (m *Manager) EnforceSeedLimits(ctx context.Context) error {
 		if !ok {
 			continue
 		}
+		before, err := m.tellStatusByID(ctx, job.taskID)
+		if err != nil {
+			continue
+		}
 		if err := enforcer.EnforceSeedPolicy(ctx, job.taskID, effectiveSeedRatio(ratioSet, ratio), seedTime); err != nil && !errors.Is(err, ErrTaskNotFound) {
 			return err
+		}
+		updated, err := m.syncTaskByID(ctx, job.taskID, false)
+		if err != nil || updated == nil || before == nil {
+			continue
+		}
+		if before.Seeder != updated.Seeder || before.Status != updated.Status {
+			m.emit(EventTaskUpdated, updated)
 		}
 	}
 	return nil
