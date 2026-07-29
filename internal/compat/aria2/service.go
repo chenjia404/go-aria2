@@ -308,6 +308,13 @@ func (s *Service) pause(ctx context.Context, params []any, force bool) (any, err
 	if err != nil {
 		return nil, err
 	}
+	item, err := s.manager.TellStatus(ctx, gid)
+	if err != nil {
+		return nil, mapManagerRPCError(err)
+	}
+	if !taskCanBePaused(item) {
+		return nil, errCannotPauseNow(gid)
+	}
 	paused, err := s.manager.Pause(ctx, gid, force)
 	if err != nil {
 		return nil, mapManagerRPCError(err)
@@ -530,6 +537,14 @@ func (s *Service) getServers(ctx context.Context, params []any) (any, error) {
 	gid, err := stringParam(params, 0, "gid")
 	if err != nil {
 		return nil, err
+	}
+
+	item, err := s.manager.TellStatus(ctx, gid)
+	if err != nil {
+		return nil, mapManagerRPCError(err)
+	}
+	if item.Status != task.StatusActive {
+		return nil, errNoActiveDownload(gid)
 	}
 
 	servers, err := s.manager.GetServers(ctx, gid)

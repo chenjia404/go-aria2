@@ -25,7 +25,9 @@ func mapManagerRPCError(err error) error {
 	case strings.Contains(msg, "unknown position mode"),
 		strings.Contains(msg, "not in queue"),
 		strings.Contains(msg, "not supported"),
-		strings.Contains(msg, "cannot remove download result"):
+		strings.Contains(msg, "cannot remove download result"),
+		strings.Contains(msg, "No active download for GID#"),
+		strings.Contains(msg, "cannot be paused now"):
 		return jsonrpc.NewError(jsonrpc.CodeInvalidParams, msg)
 	default:
 		return err

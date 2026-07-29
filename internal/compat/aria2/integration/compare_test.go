@@ -539,6 +539,77 @@ func TestCompareAria2_GetOptionOmitsPause(t *testing.T) {
 	}
 }
 
+func TestCompareAria2_TellActiveEmptyWhenPaused(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-tellactive-empty"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/paused-active.bin"}, map[string]any{"pause": "true"}}
+	mustCallSlice(t, ctx, aria2, "aria2.addUri", params)
+	mustCallSlice(t, ctx, goAria, "aria2.addUri", params)
+
+	aria2Active := decodeJSON[[]map[string]any](t, mustCall(t, ctx, aria2, "aria2.tellActive"), "aria2 tellActive")
+	goActive := decodeJSON[[]map[string]any](t, mustCall(t, ctx, goAria, "aria2.tellActive"), "go tellActive")
+	if len(aria2Active) != 0 || len(goActive) != 0 {
+		t.Fatalf("tellActive should be empty for paused tasks: aria2=%#v go=%#v", aria2Active, goActive)
+	}
+}
+
+func TestCompareAria2_GetServersFailsForNonActive(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-getservers-nonactive"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/nonactive-servers.bin"}, map[string]any{"pause": "true"}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		if _, err := d.call(ctx, "aria2.getServers", []any{gid}); err == nil {
+			t.Fatalf("%s getServers should fail for paused task", d.name)
+		}
+	}
+}
+
+func TestCompareAria2_BTGetPeersEmptyWhenPaused(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-bt-peers"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{sampleTorrentB64, []any{}, map[string]any{"pause": "true"}}
+	aria2GID := mustString(t, first(rawCall(t, ctx, aria2, goAria, "aria2.addTorrent", params)), "aria2 addTorrent")
+	goGID := mustString(t, second(rawCall(t, ctx, aria2, goAria, "aria2.addTorrent", params)), "go addTorrent")
+
+	aria2Peers := decodeJSON[[]map[string]any](t, mustCall(t, ctx, aria2, "aria2.getPeers", aria2GID), "aria2 getPeers")
+	goPeers := decodeJSON[[]map[string]any](t, mustCall(t, ctx, goAria, "aria2.getPeers", goGID), "go getPeers")
+	if len(aria2Peers) != 0 || len(goPeers) != 0 {
+		t.Fatalf("paused BT getPeers should be empty: aria2=%#v go=%#v", aria2Peers, goPeers)
+	}
+}
+
+func TestCompareAria2_PauseRejectsAlreadyPaused(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-pause-reject"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/paused.bin"}, map[string]any{"pause": "true"}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		if _, err := d.call(ctx, "aria2.pause", []any{gid}); err == nil {
+			t.Fatalf("%s pause should fail for already paused task", d.name)
+		}
+		if _, err := d.call(ctx, "aria2.forcePause", []any{gid}); err == nil {
+			t.Fatalf("%s forcePause should fail for already paused task", d.name)
+		}
+	}
+}
+
 func TestCompareAria2_ForceRemove(t *testing.T) {
 	work := t.TempDir()
 	secret := "compare-forceremove"
