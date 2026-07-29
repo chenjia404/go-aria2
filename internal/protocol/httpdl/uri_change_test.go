@@ -21,8 +21,12 @@ func TestChangeURIInsertAndDelete(t *testing.T) {
 		t.Fatalf("Add: %v", err)
 	}
 
-	if err := driver.ChangeURI(context.Background(), item.ID, 1, []string{"http://a.example/file.bin"}, []string{"http://c.example/file.bin"}, 0); err != nil {
+	delCount, addCount, err := driver.ChangeURI(context.Background(), item.ID, 1, []string{"http://a.example/file.bin"}, []string{"http://c.example/file.bin"}, 0)
+	if err != nil {
 		t.Fatalf("ChangeURI: %v", err)
+	}
+	if delCount != 1 || addCount != 1 {
+		t.Fatalf("unexpected counts: del=%d add=%d", delCount, addCount)
 	}
 	files, err := driver.GetFiles(context.Background(), item.ID)
 	if err != nil {

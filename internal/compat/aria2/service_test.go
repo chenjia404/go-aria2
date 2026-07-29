@@ -181,30 +181,60 @@ func (d *rpcStubDriver) ChangeOption(ctx context.Context, taskID string, opts ma
 	return nil
 }
 
-func (d *rpcStubDriver) ChangeURI(ctx context.Context, taskID string, fileIndex int, delURIs, addURIs []string, position int) error {
+func (d *rpcStubDriver) ChangeURI(ctx context.Context, taskID string, fileIndex int, delURIs, addURIs []string, position int) (int, int, error) {
 	_ = ctx
-	_ = position
 	item := d.tasks[taskID]
 	if item == nil || len(item.Files) == 0 {
-		return manager.ErrTaskNotFound
+		return 0, 0, manager.ErrTaskNotFound
 	}
 	idx := fileIndex - 1
 	if idx < 0 || idx >= len(item.Files) {
-		return fmt.Errorf("file not found")
+		return 0, 0, fmt.Errorf("file not found")
 	}
 	uris := append([]string(nil), item.Files[idx].URIs...)
+	delCount := 0
 	for _, delURI := range delURIs {
+		found := false
 		filtered := uris[:0]
 		for _, uri := range uris {
-			if uri != delURI {
-				filtered = append(filtered, uri)
+			if uri == delURI {
+				found = true
+				continue
 			}
+			filtered = append(filtered, uri)
+		}
+		if found {
+			delCount++
 		}
 		uris = filtered
 	}
-	uris = append(uris, addURIs...)
+	addCount := 0
+	if len(addURIs) > 0 {
+		if position < 0 {
+			for _, uri := range addURIs {
+				if !isValidURI(uri) {
+					continue
+				}
+				uris = append(uris, uri)
+				addCount++
+			}
+		} else {
+			pos := position
+			if pos > len(uris) {
+				pos = len(uris)
+			}
+			for _, uri := range addURIs {
+				if !isValidURI(uri) {
+					continue
+				}
+				uris = append(append(append([]string(nil), uris[:pos]...), uri), uris[pos:]...)
+				addCount++
+				pos++
+			}
+		}
+	}
 	item.Files[idx].URIs = uris
-	return nil
+	return delCount, addCount, nil
 }
 
 func TestServiceExposesVersionAndSessionMethods(t *testing.T) {

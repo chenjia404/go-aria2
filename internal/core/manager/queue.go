@@ -12,7 +12,7 @@ import (
 
 // URIMutator 允许驱动在运行时增删镜像 URI（aria2.changeUri）。
 type URIMutator interface {
-	ChangeURI(ctx context.Context, taskID string, fileIndex int, delURIs, addURIs []string, position int) error
+	ChangeURI(ctx context.Context, taskID string, fileIndex int, delURIs, addURIs []string, position int) (delCount, addCount int, err error)
 }
 
 // ChangePosition 调整等待队列中任务的位置，语义对齐 aria2.changePosition。
@@ -51,22 +51,23 @@ func (m *Manager) ChangePosition(ctx context.Context, gid string, pos int, how s
 }
 
 // ChangeURI 为 HTTP 等支持 URIMutator 的任务增删镜像 URI。
-func (m *Manager) ChangeURI(ctx context.Context, gid string, fileIndex int, delURIs, addURIs []string, position int) error {
+func (m *Manager) ChangeURI(ctx context.Context, gid string, fileIndex int, delURIs, addURIs []string, position int) (int, int, error) {
 	taskID, _, driver, err := m.lookupByGID(gid)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	mutator, ok := driver.(URIMutator)
 	if !ok {
-		return fmt.Errorf("changeUri is not supported for this download")
+		return 0, 0, fmt.Errorf("changeUri is not supported for this download")
 	}
-	if err := mutator.ChangeURI(ctx, taskID, fileIndex, delURIs, addURIs, position); err != nil {
-		return err
+	delCount, addCount, err := mutator.ChangeURI(ctx, taskID, fileIndex, delURIs, addURIs, position)
+	if err != nil {
+		return 0, 0, err
 	}
 	if _, err := m.syncTaskByID(ctx, taskID, true); err != nil {
-		return err
+		return 0, 0, err
 	}
-	return m.SaveSession(ctx)
+	return delCount, addCount, m.SaveSession(ctx)
 }
 
 // ForcePauseAll 强制暂停所有活动与等待中的任务（aria2.forcePauseAll）。
