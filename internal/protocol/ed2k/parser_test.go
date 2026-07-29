@@ -18,3 +18,33 @@ func TestParseLink(t *testing.T) {
 		t.Fatalf("unexpected ed2k sources: %+v", item.Sources)
 	}
 }
+
+func TestParseLinkUsesGoed2kParser(t *testing.T) {
+	item, err := parseLink("ed2k://|file|hello%20world.mkv|999|0123456789abcdef0123456789abcdef|/")
+	if err != nil {
+		t.Fatalf("parseLink returned error: %v", err)
+	}
+	if item.Name != "hello world.mkv" {
+		t.Fatalf("unexpected name: %q", item.Name)
+	}
+	if item.Size != 999 {
+		t.Fatalf("unexpected size: %d", item.Size)
+	}
+}
+
+func TestParseLinkExtras(t *testing.T) {
+	aich, sources := parseLinkExtras("ed2k://|file|x|1|hash|h=foo|s=1.1.1.1:4662|s=2.2.2.2:4662|/")
+	if aich != "foo" {
+		t.Fatalf("unexpected aich: %q", aich)
+	}
+	if len(sources) != 2 || sources[0] != "1.1.1.1:4662" || sources[1] != "2.2.2.2:4662" {
+		t.Fatalf("unexpected sources: %+v", sources)
+	}
+}
+
+func TestParseLinkRejectsNonFile(t *testing.T) {
+	_, err := parseLink("ed2k://|server|1.2.3.4|4661|/")
+	if err == nil {
+		t.Fatal("expected error for server link")
+	}
+}

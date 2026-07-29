@@ -7,7 +7,7 @@ require (
 	github.com/anacrolix/torrent v1.61.0
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/gorilla/websocket v1.5.3
-	github.com/monkeyWie/goed2k v0.0.0-20260403055011-a8f73dee6faa
+	github.com/monkeyWie/goed2k v0.0.0-20260602122456-f2a71d599dee
 )
 
 require (

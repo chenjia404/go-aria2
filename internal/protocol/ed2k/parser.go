@@ -2,9 +2,9 @@ package ed2k
 
 import (
 	"fmt"
-	"net/url"
-	"strconv"
 	"strings"
+
+	goed2k "github.com/monkeyWie/goed2k"
 
 	"github.com/chenjia404/go-aria2/internal/core/task"
 )
@@ -19,43 +19,42 @@ type link struct {
 }
 
 func parseLink(raw string) (*link, error) {
-	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "ed2k://") {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
 		return nil, fmt.Errorf("invalid ed2k URI")
 	}
 
-	parts := strings.Split(strings.TrimPrefix(raw, "ed2k://"), "|")
-	if len(parts) < 6 {
-		return nil, fmt.Errorf("invalid ed2k URI format")
+	parsed, err := goed2k.ParseEMuleLink(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid ed2k URI: %w", err)
 	}
-	if parts[1] != "file" {
-		return nil, fmt.Errorf("unsupported ed2k entity %q", parts[1])
+	if parsed.Type != goed2k.LinkFile {
+		return nil, fmt.Errorf("unsupported ed2k entity %q", parsed.Type)
 	}
 
-	name, err := url.PathUnescape(parts[2])
-	if err != nil {
-		return nil, fmt.Errorf("decode ed2k file name failed: %w", err)
-	}
-	size, err := strconv.ParseInt(parts[3], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid ed2k size: %w", err)
-	}
-
-	item := &link{
-		Name:      name,
-		Size:      size,
-		Hash:      strings.ToLower(parts[4]),
+	aich, sources := parseLinkExtras(raw)
+	return &link{
+		Name:      parsed.StringValue,
+		Size:      parsed.NumberValue,
+		Hash:      strings.ToLower(parsed.Hash.String()),
+		AICH:      aich,
+		Sources:   sources,
 		SourceURI: raw,
-	}
+	}, nil
+}
 
+// parseLinkExtras 从 ed2k 文件链接尾部提取 goed2k.ParseEMuleLink 不解析的扩展段（h=、s=）。
+func parseLinkExtras(raw string) (aich string, sources []string) {
+	parts := strings.Split(raw, "|")
 	for _, part := range parts[5:] {
 		switch {
 		case strings.HasPrefix(part, "h="):
-			item.AICH = strings.TrimPrefix(part, "h=")
+			aich = strings.TrimPrefix(part, "h=")
 		case strings.HasPrefix(part, "s="):
-			item.Sources = append(item.Sources, strings.TrimPrefix(part, "s="))
+			sources = append(sources, strings.TrimPrefix(part, "s="))
 		}
 	}
-	return item, nil
+	return aich, sources
 }
 
 func toTaskFile(item *link) task.File {
