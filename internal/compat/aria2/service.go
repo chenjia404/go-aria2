@@ -844,15 +844,16 @@ func (s *Service) changeUri(ctx context.Context, params []any) (any, error) {
 		}
 		addURIs = parseStringList(params[3])
 	}
-	position := 0
+	position := -1
 	if len(params) > 4 {
 		position, err = intParam(params, 4, "position")
 		if err != nil {
 			return nil, err
 		}
 	}
-	if err := s.manager.ChangeURI(ctx, gid, fileIndex, delURIs, addURIs, position); err != nil {
+	delCount, addCount, err := s.manager.ChangeURI(ctx, gid, fileIndex, delURIs, addURIs, position)
+	if err != nil {
 		return nil, mapManagerRPCError(err)
 	}
-	return []any{}, nil
+	return []any{delCount, addCount}, nil
 }
