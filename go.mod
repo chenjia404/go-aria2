@@ -1,6 +1,6 @@
 module github.com/chenjia404/go-aria2
 
-go 1.25.7
+go 1.26.5
 
 require (
 	github.com/RoaringBitmap/roaring v1.9.4
