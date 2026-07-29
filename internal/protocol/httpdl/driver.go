@@ -18,6 +18,7 @@ import (
 
 	"github.com/chenjia404/go-aria2/internal/core/manager"
 	"github.com/chenjia404/go-aria2/internal/core/task"
+	"github.com/chenjia404/go-aria2/internal/protocol/common"
 )
 
 // Options 控制 HTTP/HTTPS 驱动的基础行为�?
@@ -80,7 +81,7 @@ func (d *Driver) CanHandle(input task.AddTaskInput) bool {
 	for _, uri := range append([]string{input.URI}, input.URIs...) {
 		lower := strings.ToLower(strings.TrimSpace(uri))
 		if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
-			if strings.HasSuffix(lower, ".torrent") {
+			if strings.HasSuffix(lower, ".torrent") && common.ShouldFollowTorrentURL(input.Options) {
 				continue
 			}
 			return true
@@ -846,6 +847,22 @@ func (d *Driver) setCompleted(taskID string, completed int64) {
 
 func (d *Driver) complete(taskID string, total int64) {
 	d.setCompleted(taskID, total)
+
+	d.mu.RLock()
+	st := d.tasks[taskID]
+	d.mu.RUnlock()
+	if st == nil || st.removed {
+		return
+	}
+
+	checked, matched, _, err := common.VerifyTaskChecksum(st.task)
+	if err != nil {
+		d.fail(taskID, fmt.Errorf("checksum verification failed: %w", err))
+		return
+	}
+	if checked && !matched {
+		d.fail(taskID, fmt.Errorf("checksum mismatch"))
+	}
 }
 
 func (d *Driver) segmentCount(st *state) int {

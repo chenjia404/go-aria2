@@ -76,7 +76,7 @@ func runDaemon(args []string) error {
 		logger.Printf("config warning: dht-file-path, dht-file-path6, dht-listen-port, and enable-dht6 are accepted for aria2 compatibility, but custom DHT state/listen behavior is not implemented yet")
 	}
 	if !cfg.FollowMetalink {
-		logger.Printf("config warning: follow-metalink=false is accepted for aria2 compatibility, but metalink handling controls are not implemented yet")
+		logger.Printf("config: follow-metalink=false — HTTP(S) .torrent URL 将作为普通文件下载，不解析为 BT 任务")
 	}
 	if cfg.PauseMetadata {
 		logger.Printf("config warning: pause-metadata is accepted for aria2 compatibility, but metadata pause workflow is not implemented yet")

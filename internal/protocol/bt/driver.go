@@ -21,6 +21,7 @@ import (
 
 	"github.com/chenjia404/go-aria2/internal/core/manager"
 	"github.com/chenjia404/go-aria2/internal/core/task"
+	"github.com/chenjia404/go-aria2/internal/protocol/common"
 )
 
 // Options 控制 BT 驱动底层 anacrolix/torrent Client 的初始化�?
@@ -157,7 +158,7 @@ func (d *Driver) CanHandle(input task.AddTaskInput) bool {
 			return true
 		}
 		if (strings.HasPrefix(normalized, "http://") || strings.HasPrefix(normalized, "https://")) && strings.HasSuffix(normalized, ".torrent") {
-			return true
+			return common.ShouldFollowTorrentURL(input.Options)
 		}
 	}
 	return false

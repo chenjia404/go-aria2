@@ -182,7 +182,8 @@ func TestServiceExposesVersionAndSessionMethods(t *testing.T) {
 		"aria2.unpauseAll":           false,
 		"aria2.removeDownloadResult": false,
 		"aria2.purgeDownloadResult":  false,
-		"aria2.addMetalink":        false,
+		"aria2.shutdown":             false,
+		"aria2.addMetalink":          false,
 	}
 	for _, method := range methods {
 		if _, ok := required[method]; ok {
