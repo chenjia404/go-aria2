@@ -463,6 +463,57 @@ func TestCompareAria2_RemoveDownloadResult(t *testing.T) {
 	}
 }
 
+func TestCompareAria2_GetFiles(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-getfiles"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/getfiles.bin"}, map[string]any{"pause": "true", "out": "getfiles.bin"}}
+	aria2GID := mustString(t, first(rawCall(t, ctx, aria2, goAria, "aria2.addUri", params)), "aria2 addUri")
+	goGID := mustString(t, second(rawCall(t, ctx, aria2, goAria, "aria2.addUri", params)), "go addUri")
+
+	aria2Files := decodeJSON[[]map[string]any](t, mustCall(t, ctx, aria2, "aria2.getFiles", aria2GID), "aria2 getFiles")
+	goFiles := decodeJSON[[]map[string]any](t, mustCall(t, ctx, goAria, "aria2.getFiles", goGID), "go getFiles")
+	if len(aria2Files) != 1 || len(goFiles) != 1 {
+		t.Fatalf("expected one file entry: aria2=%#v go=%#v", aria2Files, goFiles)
+	}
+	for _, key := range []string{"index", "path", "length", "completedLength", "selected", "uris"} {
+		if aria2Files[0][key] == nil {
+			t.Fatalf("aria2 getFiles missing %q: %#v", key, aria2Files[0])
+		}
+		if goFiles[0][key] == nil {
+			t.Fatalf("go-aria2 getFiles missing %q: %#v", key, goFiles[0])
+		}
+	}
+	if aria2Files[0]["index"] != goFiles[0]["index"] {
+		t.Fatalf("index mismatch: aria2=%v go=%v", aria2Files[0]["index"], goFiles[0]["index"])
+	}
+}
+
+func TestCompareAria2_ForceRemove(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-forceremove"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/forceremove.bin"}, map[string]any{"pause": "true"}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.forceRemove", gid), d.name+" forceRemove"); got != gid {
+			t.Fatalf("%s forceRemove returned %q", d.name, got)
+		}
+		if _, err := d.call(ctx, "aria2.tellStatus", []any{gid}); err == nil {
+			status := decodeJSON[map[string]any](t, mustCall(t, ctx, d, "aria2.tellStatus", gid), d.name+" after forceRemove")
+			if status["status"] != "removed" {
+				t.Fatalf("%s tellStatus after forceRemove: %#v", d.name, status)
+			}
+		}
+	}
+}
+
 func rawCall(t *testing.T, ctx context.Context, aria2, goAria *daemonHandle, method string, params []any) (json.RawMessage, json.RawMessage) {
 	t.Helper()
 	a, err := aria2.call(ctx, method, params)
