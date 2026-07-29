@@ -58,7 +58,8 @@ func TestCompareAria2_ListMethods(t *testing.T) {
 
 	required := []string{
 		"aria2.addUri", "aria2.addTorrent", "aria2.addMetalink",
-		"aria2.remove", "aria2.pause", "aria2.unpause",
+		"aria2.remove", "aria2.pause", "aria2.unpause", "aria2.pauseAll", "aria2.unpauseAll",
+		"aria2.removeDownloadResult", "aria2.purgeDownloadResult",
 		"aria2.tellStatus", "aria2.tellActive", "aria2.tellWaiting", "aria2.tellStopped",
 		"aria2.getOption", "aria2.changeOption", "aria2.changePosition",
 		"aria2.getGlobalOption", "aria2.changeGlobalOption", "aria2.getGlobalStat",
@@ -302,6 +303,92 @@ func TestCompareAria2_AddMetalink(t *testing.T) {
 	goGIDs := decodeJSON[[]string](t, second(rawCall(t, ctx, aria2, goAria, "aria2.addMetalink", params)), "go metalink")
 	if len(aria2GIDs) != 2 || len(goGIDs) != 2 {
 		t.Fatalf("expected 2 gids: aria2=%#v go=%#v", aria2GIDs, goGIDs)
+	}
+}
+
+func TestCompareAria2_UnpauseAll(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-unpauseall"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/unpauseall.bin"}, map[string]any{}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.pauseAll"), d.name+" pauseAll"); got != "OK" {
+			t.Fatalf("%s pauseAll returned %q", d.name, got)
+		}
+		status := decodeJSON[map[string]any](t, mustCall(t, ctx, d, "aria2.tellStatus", gid), d.name+" paused")
+		if status["status"] != "paused" {
+			t.Fatalf("%s expected paused after pauseAll, got %v", d.name, status["status"])
+		}
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.unpauseAll"), d.name+" unpauseAll"); got != "OK" {
+			t.Fatalf("%s unpauseAll returned %q", d.name, got)
+		}
+		status = decodeJSON[map[string]any](t, mustCall(t, ctx, d, "aria2.tellStatus", gid), d.name+" unpaused")
+		if status["status"] != "active" {
+			t.Fatalf("%s expected active after unpauseAll, got %v", d.name, status["status"])
+		}
+	}
+}
+
+func TestCompareAria2_TellStopped(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-stopped"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/stopped.bin"}, map[string]any{"pause": "true"}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.remove", gid), d.name+" remove"); got != gid {
+			t.Fatalf("%s remove returned %q", d.name, got)
+		}
+		stopped := decodeJSON[[]map[string]any](t, mustCall(t, ctx, d, "aria2.tellStopped", 0, 10), d.name+" tellStopped")
+		if len(stopped) == 0 {
+			t.Fatalf("%s tellStopped expected at least one entry after remove", d.name)
+		}
+		found := false
+		for _, item := range stopped {
+			if item["gid"] == gid {
+				found = true
+				if item["status"] != "removed" {
+					t.Fatalf("%s tellStopped status for %s: got %v want removed", d.name, gid, item["status"])
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("%s tellStopped missing gid %s in %#v", d.name, gid, stopped)
+		}
+	}
+}
+
+func TestCompareAria2_PurgeDownloadResult(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-purge"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/purge.bin"}, map[string]any{"pause": "true"}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.remove", gid), d.name+" remove"); got != gid {
+			t.Fatalf("%s remove returned %q", d.name, got)
+		}
+		before := decodeJSON[[]map[string]any](t, mustCall(t, ctx, d, "aria2.tellStopped", 0, 10), d.name+" tellStopped before purge")
+		if len(before) == 0 {
+			t.Fatalf("%s expected stopped entry before purge", d.name)
+		}
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.purgeDownloadResult"), d.name+" purgeDownloadResult"); got != "OK" {
+			t.Fatalf("%s purgeDownloadResult returned %q", d.name, got)
+		}
+		after := decodeJSON[[]map[string]any](t, mustCall(t, ctx, d, "aria2.tellStopped", 0, 10), d.name+" tellStopped after purge")
+		if len(after) != 0 {
+			t.Fatalf("%s tellStopped after purge: want empty, got %#v", d.name, after)
+		}
 	}
 }
 
