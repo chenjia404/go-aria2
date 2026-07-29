@@ -369,9 +369,25 @@ func (m *Manager) RemoveDownloadResult(ctx context.Context, gid string) error {
 }
 
 func (m *Manager) PurgeDownloadResult(ctx context.Context) error {
-	taskIDs := m.snapshotTaskIDsByStatus(task.StatusComplete, task.StatusError, task.StatusRemoved)
+	m.mu.RLock()
+	taskIDs := make([]string, 0, len(m.tasks))
+	for taskID := range m.tasks {
+		taskIDs = append(taskIDs, taskID)
+	}
+	m.mu.RUnlock()
+
 	for _, taskID := range taskIDs {
-		_, current, driver, err := m.lookupByTaskID(taskID)
+		current, err := m.tellStatusByID(ctx, taskID)
+		if err != nil {
+			continue
+		}
+		switch current.Status {
+		case task.StatusComplete, task.StatusError, task.StatusRemoved:
+		default:
+			continue
+		}
+
+		_, _, driver, err := m.lookupByTaskID(taskID)
 		if err != nil {
 			continue
 		}
@@ -745,6 +761,14 @@ func (m *Manager) SaveSession(ctx context.Context) error {
 }
 
 // Close 在退出前持久化一�?session�?
+// SaveSessionTo 将当前任务快照写入指定路径（aria2.saveSession 兼容）。
+func (m *Manager) SaveSessionTo(ctx context.Context, path string) error {
+	if strings.TrimSpace(path) == "" {
+		return m.SaveSession(ctx)
+	}
+	return session.NewFileStore(path).Save(ctx, m.snapshotTasksForPersist(ctx))
+}
+
 func (m *Manager) Close(ctx context.Context) error {
 	return m.SaveSession(ctx)
 }

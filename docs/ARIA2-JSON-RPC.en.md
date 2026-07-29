@@ -178,6 +178,19 @@ Below, **`params` are after stripping the optional `token:` prefix** (when secre
 
 ---
 
+### 6.2.1 `aria2.addMetalink`
+
+| Index | Name | Type | Required | Description |
+|-------|------|------|----------|-------------|
+| `0` | metalink | string / object / array | yes | Metalink XML payload; encoding same as `addTorrent` (Base64 / Buffer / byte array) |
+| `1` | options | object | no | Per-task options applied to each `<file>` (e.g. `dir`, `checksum`) |
+
+Parses Metalink 3/4 XML and creates one task per `<file>`. Multiple HTTP(S) URLs become mirrors; `magnet:` uses BT.
+
+**`result`:** **array[string]** — GIDs of created tasks.
+
+---
+
 ### 6.3 `aria2.remove` / `aria2.forceRemove`
 
 | Index | Name | Type | Required | Description |

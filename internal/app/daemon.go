@@ -51,17 +51,8 @@ func runDaemon(args []string) error {
 	for _, warning := range cfg.Warnings {
 		logger.Printf("config warning: %s", warning)
 	}
-	if cfg.BTForceEncryption {
-		logger.Printf("config warning: bt-force-encryption is accepted for aria2 compatibility, but strict BT encryption is not implemented yet")
-	}
-	if cfg.BTRequireCrypto {
-		logger.Printf("config warning: bt-require-crypto is accepted for aria2 compatibility, but strict BT crypto policy is not implemented yet")
-	}
-	if cfg.BTMinCryptoLevel != "" && cfg.BTMinCryptoLevel != "plain" {
-		logger.Printf("config warning: bt-min-crypto-level=%s is accepted for aria2 compatibility, but crypto level enforcement is not implemented yet", cfg.BTMinCryptoLevel)
-	}
 	if !cfg.FollowTorrent {
-		logger.Printf("config warning: follow-torrent=false is accepted for aria2 compatibility, but downloading .torrent files without following is not implemented yet")
+		logger.Printf("config: follow-torrent=false — HTTP(S) .torrent URL 将作为普通文件下载，不解析为 BT 任务")
 	}
 	if cfg.SeedTime > 0 {
 		logger.Printf("config warning: seed-time is accepted; enforcement applies to BT seeding via sync loop")
@@ -76,13 +67,10 @@ func runDaemon(args []string) error {
 		logger.Printf("config warning: dht-file-path, dht-file-path6, dht-listen-port, and enable-dht6 are accepted for aria2 compatibility, but custom DHT state/listen behavior is not implemented yet")
 	}
 	if !cfg.FollowMetalink {
-		logger.Printf("config warning: follow-metalink=false is accepted for aria2 compatibility, but metalink handling controls are not implemented yet")
+		logger.Printf("config: follow-metalink=false — HTTP(S) .torrent URL 将作为普通文件下载，不解析为 BT 任务")
 	}
 	if cfg.PauseMetadata {
 		logger.Printf("config warning: pause-metadata is accepted for aria2 compatibility, but metadata pause workflow is not implemented yet")
-	}
-	if cfg.NoProxy != "" {
-		logger.Printf("config warning: no-proxy is accepted for aria2 compatibility, but proxy bypass rules are not implemented yet")
 	}
 
 	store := session.NewFileStore(runtimePaths.sessionPath)
@@ -99,6 +87,11 @@ func runDaemon(args []string) error {
 		ListenPort: cfg.ListenPort,
 		EnableDHT:  cfg.EnableDHT,
 		MaxPeers:   cfg.BTMaxPeers,
+		Crypto: bt.CryptoOptions{
+			ForceEncryption: cfg.BTForceEncryption,
+			RequireCrypto:   cfg.BTRequireCrypto,
+			MinCryptoLevel:  cfg.BTMinCryptoLevel,
+		},
 	})
 	if err != nil {
 		logger.Fatalf("init bt driver failed: %v", err)
@@ -130,6 +123,7 @@ func runDaemon(args []string) error {
 		HTTPProxy:               cfg.HTTPProxy,
 		HTTPSProxy:              cfg.HTTPSProxy,
 		AllProxy:                cfg.AllProxy,
+		NoProxy:                 cfg.NoProxy,
 		CheckCertificate:        cfg.CheckCertificate,
 		Split:                   cfg.Split,
 		MaxConnectionPerServer:  cfg.MaxConnectionPerServer,
@@ -148,6 +142,7 @@ func runDaemon(args []string) error {
 	}
 
 	service := aria2.NewService(mgr, cfg.RPCSecret)
+	service.SetSessionPath(runtimePaths.sessionPath)
 	shutdownReq := make(chan bool, 1)
 	service.SetShutdownHook(func(force bool) {
 		select {

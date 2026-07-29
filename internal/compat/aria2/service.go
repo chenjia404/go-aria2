@@ -14,12 +14,13 @@ import (
 
 // Service ??? aria2 ???? JSON-RPC ????????????
 type Service struct {
-	manager    *manager.Manager
-	rpcSecret  string
-	methods    []string
-	startedAt  time.Time
-	sessionID  string
-	onShutdown func(force bool)
+	manager     *manager.Manager
+	rpcSecret   string
+	methods     []string
+	startedAt   time.Time
+	sessionID   string
+	sessionPath string
+	onShutdown  func(force bool)
 }
 
 // NewService ???? aria2 ?????????????
@@ -27,6 +28,7 @@ func NewService(mgr *manager.Manager, rpcSecret string) *Service {
 	methods := []string{
 		"aria2.addUri",
 		"aria2.addTorrent",
+		"aria2.addMetalink",
 		"aria2.remove",
 		"aria2.forceRemove",
 		"aria2.pause",
@@ -52,6 +54,8 @@ func NewService(mgr *manager.Manager, rpcSecret string) *Service {
 		"aria2.getGlobalStat",
 		"aria2.getVersion",
 		"aria2.getSessionInfo",
+		"aria2.ping",
+		"aria2.saveSession",
 		"system.listMethods",
 		"system.listNotifications",
 		"system.multicall",
@@ -69,6 +73,11 @@ func NewService(mgr *manager.Manager, rpcSecret string) *Service {
 // SetShutdownHook 注册 aria2.shutdown 触发时的回调（由 daemon 注入优雅退出逻辑）。
 func (s *Service) SetShutdownHook(fn func(force bool)) {
 	s.onShutdown = fn
+}
+
+// SetSessionPath 设置 aria2.saveSession 未指定路径时的默认落盘位置。
+func (s *Service) SetSessionPath(path string) {
+	s.sessionPath = path
 }
 
 // VersionInfo 返回与 aria2.getVersion 一致的结构，供 REST 等适配层使用。
@@ -96,6 +105,8 @@ func (s *Service) invokeWithoutAuth(ctx context.Context, method string, params [
 		return s.addURI(ctx, params)
 	case "aria2.addTorrent":
 		return s.addTorrent(ctx, params)
+	case "aria2.addMetalink":
+		return s.addMetalink(ctx, params)
 	case "aria2.remove":
 		return s.remove(ctx, params, false)
 	case "aria2.forceRemove":
@@ -146,6 +157,10 @@ func (s *Service) invokeWithoutAuth(ctx context.Context, method string, params [
 		return s.getVersion(), nil
 	case "aria2.getSessionInfo":
 		return s.getSessionInfo(), nil
+	case "aria2.ping":
+		return s.ping(ctx, params)
+	case "aria2.saveSession":
+		return s.saveSession(ctx, params)
 	case "system.listMethods":
 		return append([]string(nil), s.methods...), nil
 	case "system.listNotifications":
@@ -281,6 +296,28 @@ func (s *Service) removeDownloadResult(ctx context.Context, params []any) (any, 
 
 func (s *Service) purgeDownloadResult(ctx context.Context) (any, error) {
 	if err := s.manager.PurgeDownloadResult(ctx); err != nil {
+		return nil, err
+	}
+	return "OK", nil
+}
+
+func (s *Service) ping(ctx context.Context, params []any) (any, error) {
+	_ = ctx
+	_ = params
+	return "pong", nil
+}
+
+func (s *Service) saveSession(ctx context.Context, params []any) (any, error) {
+	path := s.sessionPath
+	if len(params) > 0 {
+		if value, ok := params[0].(string); ok && strings.TrimSpace(value) != "" {
+			path = value
+		}
+	}
+	if strings.TrimSpace(path) == "" {
+		return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "save-session path is not configured")
+	}
+	if err := s.manager.SaveSessionTo(ctx, path); err != nil {
 		return nil, err
 	}
 	return "OK", nil
