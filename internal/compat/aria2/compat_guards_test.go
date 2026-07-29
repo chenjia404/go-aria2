@@ -28,3 +28,17 @@ func TestTaskCanBePaused(t *testing.T) {
 		t.Fatal("paused should not be pausable")
 	}
 }
+
+func TestTaskCanBeUnpaused(t *testing.T) {
+	t.Parallel()
+
+	if !taskCanBeUnpaused(&task.Task{Status: task.StatusPaused}) {
+		t.Fatal("paused should be unpausable")
+	}
+	if taskCanBeUnpaused(&task.Task{Status: task.StatusWaiting}) {
+		t.Fatal("waiting should not be unpausable")
+	}
+	if taskCanBeUnpaused(&task.Task{Status: task.StatusActive}) {
+		t.Fatal("active should not be unpausable")
+	}
+}

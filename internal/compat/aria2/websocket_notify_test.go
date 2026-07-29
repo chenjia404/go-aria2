@@ -116,3 +116,121 @@ func TestWebSocketNotification_AddPausedSkipsStart(t *testing.T) {
 		}
 	}
 }
+
+func TestWebSocketNotification_OnDownloadStart(t *testing.T) {
+	t.Parallel()
+
+	mgr := manager.New(manager.Options{DefaultDir: t.TempDir(), MaxConcurrent: 3})
+	driver := newRPCStubDriver()
+	mgr.RegisterDriver(driver)
+	svc := NewService(mgr, "")
+
+	srv := jsonrpcserver.NewServer(svc, jsonrpcserver.Options{
+		AllowOriginAll: true,
+		WebSocket: &jsonrpcserver.WebSocketOptions{
+			Manager: mgr,
+		},
+	})
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv.ServeHTTP(w, r)
+	}))
+	defer ts.Close()
+
+	u := "ws" + strings.TrimPrefix(ts.URL, "http")
+	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	gid, err := svc.Invoke(context.Background(), "aria2.addUri", []any{
+		[]any{"http://example.com/ws-start"},
+		map[string]any{"pause": "true"},
+	})
+	if err != nil {
+		t.Fatalf("addUri: %v", err)
+	}
+	gidStr, _ := gid.(string)
+
+	if _, err := svc.Invoke(context.Background(), "aria2.unpause", []any{gidStr}); err != nil {
+		t.Fatalf("unpause: %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+		var msg map[string]any
+		if err := conn.ReadJSON(&msg); err != nil {
+			continue
+		}
+		if msg["method"] == "aria2.onDownloadStart" {
+			params, _ := msg["params"].([]any)
+			if len(params) == 1 {
+				if ev, ok := params[0].(map[string]any); ok && ev["gid"] == gidStr {
+					return
+				}
+			}
+		}
+	}
+	t.Fatal("expected aria2.onDownloadStart notification")
+}
+
+func TestWebSocketNotification_OnDownloadStop(t *testing.T) {
+	t.Parallel()
+
+	mgr := manager.New(manager.Options{DefaultDir: t.TempDir()})
+	driver := newRPCStubDriver()
+	mgr.RegisterDriver(driver)
+	svc := NewService(mgr, "")
+
+	srv := jsonrpcserver.NewServer(svc, jsonrpcserver.Options{
+		AllowOriginAll: true,
+		WebSocket: &jsonrpcserver.WebSocketOptions{
+			Manager: mgr,
+		},
+	})
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv.ServeHTTP(w, r)
+	}))
+	defer ts.Close()
+
+	u := "ws" + strings.TrimPrefix(ts.URL, "http")
+	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	gid, err := svc.Invoke(context.Background(), "aria2.addUri", []any{
+		[]any{"http://example.com/ws-stop"},
+		map[string]any{"pause": "true"},
+	})
+	if err != nil {
+		t.Fatalf("addUri: %v", err)
+	}
+	gidStr, _ := gid.(string)
+
+	if _, err := svc.Invoke(context.Background(), "aria2.remove", []any{gidStr}); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+		var msg map[string]any
+		if err := conn.ReadJSON(&msg); err != nil {
+			continue
+		}
+		if msg["method"] == "aria2.onDownloadStop" {
+			params, _ := msg["params"].([]any)
+			if len(params) == 1 {
+				if ev, ok := params[0].(map[string]any); ok && ev["gid"] == gidStr {
+					return
+				}
+			}
+		}
+	}
+	t.Fatal("expected aria2.onDownloadStop notification")
+}
