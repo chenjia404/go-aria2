@@ -594,12 +594,12 @@ func (s *Service) multicall(ctx context.Context, params []any) (any, error) {
 }
 
 // releaseDate 与构建版本对齐，避免每次 RPC 调用返回值变化（aria2 为固定发布日期）。
-const releaseDate = "2026-03-01"
+const releaseDate = "2026-07-29"
 
 func (s *Service) getVersion() map[string]any {
 	return map[string]any{
 		"version":            "0.1.0",
-		"enabledFeatures":    []string{"BitTorrent", "ED2K", "HTTP", "JSON-RPC", "WebSocket"},
+		"enabledFeatures":    []string{"BitTorrent", "ED2K", "HTTP", "JSON-RPC", "XML-RPC", "WebSocket"},
 		"fullVersion":        "github.com/chenjia404/go-aria2/0.1.0",
 		"releaseDate":        releaseDate,
 		"organization":       "github.com/chenjia404/go-aria2",
