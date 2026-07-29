@@ -157,6 +157,7 @@ func runDaemon(args []string) error {
 		go func() {
 			rpcURL := rpcEndpointURL(cfg.RPCListenPort, cfg.RPCListenAll)
 			logger.Printf("json-rpc listening on %s (POST: %s)", server.Addr, rpcURL)
+			logger.Printf("xml-rpc listening on %s (POST: /xmlrpc, /rpc)", server.Addr)
 			if cfg.EnableWebSocket {
 				wsURL := rpcWebSocketExampleURL(cfg.RPCListenPort, cfg.RPCListenAll)
 				logger.Printf("JSON-RPC over WebSocket（aria2 兼容）: %s；/ws 为同服务别名", wsURL)
