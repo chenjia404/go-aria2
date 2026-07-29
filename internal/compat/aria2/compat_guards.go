@@ -15,6 +15,10 @@ func errCannotPauseNow(gid string) error {
 	return jsonrpc.NewError(jsonrpc.CodeInvalidParams, fmt.Sprintf("GID#%s cannot be paused now", gid))
 }
 
+func errCannotUnpauseNow(gid string) error {
+	return jsonrpc.NewError(jsonrpc.CodeInvalidParams, fmt.Sprintf("GID#%s cannot be unpaused now", gid))
+}
+
 func taskCanBePaused(item *task.Task) bool {
 	switch item.Status {
 	case task.StatusActive, task.StatusWaiting:
@@ -22,4 +26,8 @@ func taskCanBePaused(item *task.Task) bool {
 	default:
 		return false
 	}
+}
+
+func taskCanBeUnpaused(item *task.Task) bool {
+	return item.Status == task.StatusPaused
 }
