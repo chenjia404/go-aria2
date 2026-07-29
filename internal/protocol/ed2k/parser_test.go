@@ -48,3 +48,20 @@ func TestParseLinkRejectsNonFile(t *testing.T) {
 		t.Fatal("expected error for server link")
 	}
 }
+
+func TestParseLinkExtrasDecodesURI(t *testing.T) {
+	aich, sources := parseLinkExtras("ed2k://|file|x|1|hash|h=foo%3Dbar|s=1.1.1.1%3A4662|/")
+	if aich != "foo=bar" {
+		t.Fatalf("unexpected aich: %q", aich)
+	}
+	if len(sources) != 1 || sources[0] != "1.1.1.1:4662" {
+		t.Fatalf("unexpected sources: %+v", sources)
+	}
+}
+
+func TestParseLinkExtrasPreservesEncodedPipeInValue(t *testing.T) {
+	aich, _ := parseLinkExtras("ed2k://|file|x|1|hash|h=ab%7Ccd|/")
+	if aich != "ab|cd" {
+		t.Fatalf("unexpected aich: %q", aich)
+	}
+}

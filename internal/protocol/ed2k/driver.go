@@ -391,6 +391,13 @@ func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, 
 		"ed2k.hash":      snapshot.Hash.String(),
 		"ed2k.sourceURI": state.uri,
 	}
+	aich, sources := parseLinkExtras(state.uri)
+	if aich != "" {
+		item.Meta["ed2k.aich"] = aich
+	}
+	if len(sources) > 0 {
+		item.Meta["ed2k.sources"] = strings.Join(sources, "\n")
+	}
 
 	switch {
 	case forcedStatus != "":

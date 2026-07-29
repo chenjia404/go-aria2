@@ -18,11 +18,6 @@ func (d *Driver) GetED2KSources(ctx context.Context, taskID string) ([]string, e
 		return nil, manager.ErrTaskNotFound
 	}
 
-	item, err := d.snapshot("", taskID)
-	if err != nil {
-		return nil, err
-	}
-
 	seen := make(map[string]struct{})
 	out := make([]string, 0)
 
@@ -38,10 +33,9 @@ func (d *Driver) GetED2KSources(ctx context.Context, taskID string) ([]string, e
 		out = append(out, addr)
 	}
 
-	if raw := strings.TrimSpace(item.Meta["ed2k.sources"]); raw != "" {
-		for _, part := range strings.Split(raw, "\n") {
-			add(part)
-		}
+	_, staticSources := parseLinkExtras(st.uri)
+	for _, part := range staticSources {
+		add(part)
 	}
 
 	handle := d.client.FindTransfer(st.hash)
