@@ -85,9 +85,10 @@ type SeedPolicyEnforcer interface {
 
 // GlobalStat 是面向管理器和兼容层的统一全局统计模型�?
 type GlobalStat struct {
-	NumActive     int
-	NumWaiting    int
-	NumStopped    int
-	DownloadSpeed int64
-	UploadSpeed   int64
+	NumActive       int
+	NumWaiting      int
+	NumStopped      int
+	NumStoppedTotal int
+	DownloadSpeed   int64
+	UploadSpeed     int64
 }

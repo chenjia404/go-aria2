@@ -135,11 +135,12 @@ func toURIsResponse(files []task.File) []map[string]any {
 // toGlobalStatResponse 将全局统计映射�?aria2 风格结构�?
 func toGlobalStatResponse(stat manager.GlobalStat) map[string]any {
 	return map[string]any{
-		"numActive":     strconv.Itoa(stat.NumActive),
-		"numWaiting":    strconv.Itoa(stat.NumWaiting),
-		"numStopped":    strconv.Itoa(stat.NumStopped),
-		"downloadSpeed": formatInt64(stat.DownloadSpeed),
-		"uploadSpeed":   formatInt64(stat.UploadSpeed),
+		"numActive":       strconv.Itoa(stat.NumActive),
+		"numWaiting":      strconv.Itoa(stat.NumWaiting),
+		"numStopped":      strconv.Itoa(stat.NumStopped),
+		"numStoppedTotal": strconv.Itoa(stat.NumStoppedTotal),
+		"downloadSpeed":   formatInt64(stat.DownloadSpeed),
+		"uploadSpeed":     formatInt64(stat.UploadSpeed),
 	}
 }
 
