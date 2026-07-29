@@ -95,6 +95,7 @@ func buildTorrentConfig(opts Options, listenPort int, uploadLimiter **rate.Limit
 	}
 	cfg.UploadRateLimiter = *uploadLimiter
 	applyBTCryptoOptions(cfg, opts.Crypto)
+	applySeparateDHTConfig(cfg, opts)
 	return cfg
 }
 
@@ -150,6 +151,7 @@ func New(opts Options) (*Driver, error) {
 	dhtIPv4 := resolveDHTNodePath(opts.DHTFilePath, filepath.Join(opts.DataDir, "dht.dat"))
 	dhtIPv6 := resolveDHTNodePath(opts.DHTFilePath6, filepath.Join(opts.DataDir, "dht6.dat"))
 	loadDHTNodes(client, dhtIPv4, dhtIPv6)
+	attachSeparateDHTServers(client, opts)
 	return &Driver{
 		client:          client,
 		tasks:           make(map[string]*state),

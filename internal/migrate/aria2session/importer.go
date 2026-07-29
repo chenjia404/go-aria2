@@ -170,7 +170,7 @@ func buildAddInput(item Aria2SessionTask, strict bool) (task.AddTaskInput, error
 		Options: opts,
 		Meta: map[string]string{
 			"aria2.import":        "true",
-			"aria2.import.source": "save-session",
+			"aria2.import.source": importSource(item),
 		},
 	}
 
@@ -230,7 +230,7 @@ func previewTask(item Aria2SessionTask) (*task.Task, error) {
 		Options:  cloneMap(item.Options),
 		Meta: map[string]string{
 			"aria2.import":        "true",
-			"aria2.import.source": "save-session",
+			"aria2.import.source": importSource(item),
 		},
 	}
 	if t.SaveDir != "" {
@@ -336,18 +336,26 @@ func cloneMap(src map[string]string) map[string]string {
 	return dst
 }
 
-// ImportED2KTask 预留给后�?RPC/批量迁移使用�?
+// ImportED2KTask 导入单个 ED2K 任务。
 func ImportED2KTask(ctx context.Context, mgr *manager.Manager, item Aria2SessionTask) (*task.Task, error) {
-	_ = ctx
-	_ = mgr
-	_ = item
-	return nil, fmt.Errorf("not implemented")
+	if mgr == nil {
+		return nil, fmt.Errorf("manager is required")
+	}
+	input, err := buildAddInput(item, false)
+	if err != nil {
+		return nil, err
+	}
+	return mgr.Add(ctx, input)
 }
 
-// ImportFromAria2RPC 预留给后续通过 aria2 RPC 直连导入时使用�?
-func ImportFromAria2RPC(ctx context.Context, endpoint, secret string) error {
-	_ = ctx
-	_ = endpoint
-	_ = secret
-	return fmt.Errorf("not implemented")
+// ImportFromAria2RPC 从运行中的 aria2 JSON-RPC 拉取任务并导入 manager。
+func ImportFromAria2RPC(ctx context.Context, importer *Importer, endpoint, secret string) ([]*task.Task, error) {
+	if importer == nil || importer.Manager == nil {
+		return nil, fmt.Errorf("importer with manager is required")
+	}
+	tasks, err := FetchAria2SessionTasksFromRPC(ctx, endpoint, secret)
+	if err != nil {
+		return nil, err
+	}
+	return importer.ImportAria2Tasks(ctx, tasks)
 }

@@ -60,9 +60,6 @@ func runDaemon(args []string) error {
 	if !cfg.FollowMetalink {
 		logger.Printf("config: follow-metalink=false — HTTP(S) .torrent URL 将作为普通文件下载，不解析为 BT 任务")
 	}
-	if cfg.DHTListenPort > 0 && cfg.ListenPort > 0 && cfg.DHTListenPort != cfg.ListenPort {
-		logger.Printf("config: dht-listen-port=%d 与 listen-port=%d 不同时，DHT 仍与 uTP 共用 UDP 套接字（listen-port 优先）", cfg.DHTListenPort, cfg.ListenPort)
-	}
 
 	store := session.NewFileStore(runtimePaths.sessionPath)
 	mgr := manager.New(manager.Options{
