@@ -326,6 +326,8 @@ Option validation aligned with aria2:
 
 - Known options with invalid values (e.g. `file-allocation=foo`, `max-download-limit=badvalue`) are rejected on `addUri` / `addTorrent` / `addMetalink` / `changeOption` / `changeGlobalOption`
 - Speed limits accept `K` / `M` / `G` suffixes (base 1024) and are normalized to byte counts in stored options
+- Integer options (`split`, `listen-port`, `max-concurrent-downloads`, etc.) and `seed-ratio` are validated on add/change
+- `bittorrent.creationDate` in `tellStatus` is serialized as a JSON number (aria2 parity)
 - Global-only options (`max-overall-download-limit`, etc.) passed to `changeOption` are silently ignored
 - Runtime-disallowed options (`enable-rpc`, etc.) passed to `changeGlobalOption` are silently ignored
 - Hidden internal options (e.g. `startup-idle-time`) are not returned by `getOption` / `getGlobalOption`

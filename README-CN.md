@@ -326,6 +326,8 @@ ed2k-upload-slots=3
 
 - 已知选项的无效值（如 `file-allocation=foo`、`max-download-limit=badvalue`）在 `addUri` / `addTorrent` / `addMetalink` / `changeOption` / `changeGlobalOption` 时会被拒绝
 - 速度限制支持 `K` / `M` / `G` 后缀（基数 1024），存储时规范化为字节数
+- 整数类选项（`split`、`listen-port`、`max-concurrent-downloads` 等）与 `seed-ratio` 在 add/change 时校验
+- `tellStatus` 中 `bittorrent.creationDate` 序列化为 JSON 数字（与 aria2 一致）
 - 全局专属选项（如 `max-overall-download-limit`）传入 `changeOption` 时静默忽略
 - 不可运行时修改的选项（如 `enable-rpc`）传入 `changeGlobalOption` 时静默忽略
 - 隐藏内部选项（如 `startup-idle-time`）不会通过 `getOption` / `getGlobalOption` 返回
