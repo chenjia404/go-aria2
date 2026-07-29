@@ -3,7 +3,6 @@ package aria2
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	"github.com/chenjia404/go-aria2/internal/protocol/ed2k"
 )
@@ -42,12 +41,6 @@ func (a *ed2kGatewayNative) KadStatus(ctx context.Context) (map[string]any, erro
 
 func (a *ed2kGatewayNative) ConnectKad(ctx context.Context, nodes []string) error {
 	return a.gateway.AddDHTBootstrapNodes(ctx, nodes)
-}
-
-func (a *ed2kGatewayNative) RecheckFile(ctx context.Context, gid string) error {
-	_ = ctx
-	_ = gid
-	return fmt.Errorf("ed2k file recheck is not supported by goed2k yet")
 }
 
 func dtoToMap(v any) (map[string]any, error) {

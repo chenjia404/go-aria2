@@ -18,6 +18,7 @@ type btNativeDriver interface {
 
 type ed2kNativeDriver interface {
 	GetED2KSources(ctx context.Context, taskID string) ([]string, error)
+	RecheckEd2kFile(ctx context.Context, taskID string) error
 }
 
 // ProtocolStats 汇总各协议任务数量与速率。
@@ -167,6 +168,21 @@ func (m *Manager) GetED2KSources(ctx context.Context, gid string) ([]string, err
 		return nil, fmt.Errorf("ed2k native API not available")
 	}
 	return native.GetED2KSources(ctx, taskID)
+}
+
+func (m *Manager) RecheckEd2kFile(ctx context.Context, gid string) error {
+	taskID, current, driver, err := m.lookupByGID(gid)
+	if err != nil {
+		return err
+	}
+	if current.Protocol != task.ProtocolED2K {
+		return fmt.Errorf("task %s is not an ed2k task", gid)
+	}
+	native, ok := driver.(ed2kNativeDriver)
+	if !ok {
+		return fmt.Errorf("ed2k native API not available")
+	}
+	return native.RecheckEd2kFile(ctx, taskID)
 }
 
 func addInputFromStoredTask(stored *task.Task) (task.AddTaskInput, error) {
