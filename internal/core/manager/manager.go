@@ -369,9 +369,25 @@ func (m *Manager) RemoveDownloadResult(ctx context.Context, gid string) error {
 }
 
 func (m *Manager) PurgeDownloadResult(ctx context.Context) error {
-	taskIDs := m.snapshotTaskIDsByStatus(task.StatusComplete, task.StatusError, task.StatusRemoved)
+	m.mu.RLock()
+	taskIDs := make([]string, 0, len(m.tasks))
+	for taskID := range m.tasks {
+		taskIDs = append(taskIDs, taskID)
+	}
+	m.mu.RUnlock()
+
 	for _, taskID := range taskIDs {
-		_, current, driver, err := m.lookupByTaskID(taskID)
+		current, err := m.tellStatusByID(ctx, taskID)
+		if err != nil {
+			continue
+		}
+		switch current.Status {
+		case task.StatusComplete, task.StatusError, task.StatusRemoved:
+		default:
+			continue
+		}
+
+		_, _, driver, err := m.lookupByTaskID(taskID)
 		if err != nil {
 			continue
 		}

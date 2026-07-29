@@ -296,3 +296,69 @@ func TestDriverAutoRenamesExistingFile(t *testing.T) {
 		t.Fatalf("expected renamed output path, got %+v", created.Files)
 	}
 }
+
+func TestDriverFailoverToMirrorURL(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte("mirror-payload-data")
+	badServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer badServer.Close()
+
+	goodServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		_, _ = w.Write(payload)
+	}))
+	defer goodServer.Close()
+
+	driver := New(Options{UserAgent: "test-agent"})
+	created, err := driver.Add(context.Background(), task.AddTaskInput{
+		URIs: []string{
+			badServer.URL + "/missing.bin",
+			goodServer.URL + "/file.bin",
+		},
+		SaveDir: t.TempDir(),
+		Name:    "file.bin",
+	})
+	if err != nil {
+		t.Fatalf("Add returned error: %v", err)
+	}
+	if len(created.Files[0].URIs) != 2 {
+		t.Fatalf("expected 2 mirror URIs, got %#v", created.Files[0].URIs)
+	}
+
+	if err := driver.Start(context.Background(), created.ID); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := driver.TellStatus(context.Background(), created.ID)
+		if err != nil {
+			t.Fatalf("TellStatus returned error: %v", err)
+		}
+		if status.Status == task.StatusComplete {
+			break
+		}
+		if status.Status == task.StatusError {
+			t.Fatalf("download failed before mirror failover: %+v", status)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	status, err := driver.TellStatus(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("TellStatus returned error: %v", err)
+	}
+	if status.Status != task.StatusComplete {
+		t.Fatalf("expected complete after mirror failover, got %+v", status)
+	}
+	data, err := os.ReadFile(created.Files[0].Path)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	if string(data) != string(payload) {
+		t.Fatalf("unexpected payload: %q", data)
+	}
+}

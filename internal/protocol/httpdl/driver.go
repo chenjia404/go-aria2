@@ -36,6 +36,8 @@ type Options struct {
 type state struct {
 	task         *task.Task
 	sourceURL    string
+	sourceURLs   []string
+	sourceIndex  int
 	outputPath   string
 	client       *http.Client
 	userAgent    string
@@ -129,6 +131,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 	d.tasks[item.ID] = &state{
 		task:       item.Clone(),
 		sourceURL:  sourceURL,
+		sourceURLs: append([]string(nil), sourceURLs...),
 		outputPath: outputPath,
 		client:     buildTaskClient(d.defaults, input.Options),
 		userAgent:  resolveStringOption(input.Options, "http-user-agent", defaultUserAgent(d.defaults)),
@@ -363,8 +366,12 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 		}
 
 		sourceURL := saved.Meta["http.sourceURL"]
-		if sourceURL == "" && len(saved.Files) > 0 && len(saved.Files[0].URIs) > 0 {
-			sourceURL = saved.Files[0].URIs[0]
+		sourceURLs := []string{}
+		if len(saved.Files) > 0 && len(saved.Files[0].URIs) > 0 {
+			sourceURLs = append([]string(nil), saved.Files[0].URIs...)
+		}
+		if sourceURL == "" && len(sourceURLs) > 0 {
+			sourceURL = sourceURLs[0]
 		}
 		if sourceURL == "" {
 			continue
@@ -378,6 +385,7 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 		st := &state{
 			task:       saved.Clone(),
 			sourceURL:  sourceURL,
+			sourceURLs: sourceURLs,
 			outputPath: outputPath,
 			client:     buildTaskClient(d.defaults, saved.Options),
 			userAgent:  resolveStringOption(saved.Options, "http-user-agent", defaultUserAgent(d.defaults)),
@@ -474,6 +482,35 @@ func (d *Driver) download(ctx context.Context, taskID string) {
 }
 
 func (d *Driver) downloadSingle(ctx context.Context, taskID string, st *state, existingSize, total int64) error {
+	urls := mirrorURLs(st)
+	if len(urls) == 0 {
+		return fmt.Errorf("missing download URL")
+	}
+
+	start := st.sourceIndex
+	if start < 0 || start >= len(urls) {
+		start = 0
+	}
+
+	var lastErr error
+	for i := start; i < len(urls); i++ {
+		st.setActiveMirror(i)
+		err := d.downloadSingleFromURL(ctx, taskID, st, existingSize, total)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("all mirrors failed")
+	}
+	return lastErr
+}
+
+func (d *Driver) downloadSingleFromURL(ctx context.Context, taskID string, st *state, existingSize, total int64) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, st.sourceURL, nil)
 	if err != nil {
 		return err
@@ -671,7 +708,36 @@ func (d *Driver) downloadRange(ctx context.Context, st *state, file *os.File, st
 }
 
 func (d *Driver) probeResource(ctx context.Context, st *state) (int64, bool, error) {
-	headReq, err := http.NewRequestWithContext(ctx, http.MethodHead, st.sourceURL, nil)
+	urls := mirrorURLs(st)
+	if len(urls) == 0 {
+		return 0, false, fmt.Errorf("missing download URL")
+	}
+
+	start := st.sourceIndex
+	if start < 0 || start >= len(urls) {
+		start = 0
+	}
+
+	var lastErr error
+	for i := start; i < len(urls); i++ {
+		st.setActiveMirror(i)
+		total, acceptRanges, err := d.probeURL(ctx, st, st.sourceURL)
+		if err == nil {
+			return total, acceptRanges, nil
+		}
+		lastErr = err
+		if ctx.Err() != nil {
+			return 0, false, ctx.Err()
+		}
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("all mirrors failed")
+	}
+	return 0, false, lastErr
+}
+
+func (d *Driver) probeURL(ctx context.Context, st *state, url string) (int64, bool, error) {
+	headReq, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
 	if err == nil {
 		headReq.Header.Set("User-Agent", st.userAgent)
 		if st.referer != "" {
@@ -687,7 +753,7 @@ func (d *Driver) probeResource(ctx context.Context, st *state) (int64, bool, err
 		}
 	}
 
-	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet, st.sourceURL, nil)
+	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return 0, false, err
 	}
