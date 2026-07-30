@@ -322,8 +322,8 @@ Conventions:
 - `token:xxx` auth is supported
 - By default, `system.listMethods` / `system.listNotifications` / `system.multicall` work without a token; set **`rpc-strict-auth=true`** for aria2-style auth on all methods
 - `addUri` accepts `http`/`https`/`ftp`/`sftp`/`ed2k`/`magnet`; other schemes return `Unsupported URI scheme`
-- `file-allocation` (`none`/`trunc`/`prealloc`/`falloc`), `header`, `min-split-size`, `piece-length`, and `index-out` are implemented in HTTP/FTP/SFTP/BT drivers
-- `changeUri` supports HTTP(S), BT (web seeds), FTP, and SFTP downloads
+- `file-allocation` (`none`/`trunc`/`prealloc`/`falloc`) and `index-out` are implemented in HTTP/FTP/SFTP/BT drivers; `header`, `min-split-size`, and `piece-length` are HTTP-only
+- `changeUri` supports HTTP(S), BT (web seeds), FTP, SFTP, and ED2K downloads
 - WebSocket notifications honor `rpc-secret` via `?token=...`, `Authorization: token:...`, or `X-Auth-Token`
 
 ### Compatibility testing (aria2 parity)
@@ -375,7 +375,14 @@ go test ./internal/compat/aria2/...
 
 - `ed2k://` links
 - Real driver layer wired up
+- `changeUri` for mirror links (hash must match)
 - Migration preserves task metadata; recovery can be extended further
+
+### FTP / SFTP
+
+- `ftp://` and `sftp://` single-file downloads
+- `file-allocation`, `index-out`, and mirror `changeUri`
+- FTP resume via SIZE/REST; SFTP resume from partial local file
 
 ### HTTP / HTTPS
 
@@ -393,9 +400,7 @@ Default session path comes from `save-session`; if unset, it falls under `data-d
 ## Known limitations
 
 - Not a full aria2 replacement; protocol and option semantics are still being aligned.
-- No FTP/SFTP; `addUri` accepts only `http`/`https`/`ed2k`/`magnet`.
-- Some aria2 options are validated but not yet implemented in drivers (see option matrix in `docs/ARIA2-JSON-RPC.en.md`).
-- `changeUri` supports HTTP(S), BT web seeds, FTP, and SFTP.
+- Some aria2 advanced options (e.g. HTTP pipelining, live piece verification) are not implemented yet.
 - Strict BT recovery needs torrent metadata to be available.
 - Full ED2K recovery is still being extended.
 

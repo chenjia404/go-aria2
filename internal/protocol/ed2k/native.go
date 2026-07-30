@@ -33,9 +33,11 @@ func (d *Driver) GetED2KSources(ctx context.Context, taskID string) ([]string, e
 		out = append(out, addr)
 	}
 
-	_, staticSources := parseLinkExtras(st.uri)
-	for _, part := range staticSources {
-		add(part)
+	for _, uri := range st.uris {
+		_, staticSources := parseLinkExtras(uri)
+		for _, part := range staticSources {
+			add(part)
+		}
 	}
 
 	handle := d.client.FindTransfer(st.hash)

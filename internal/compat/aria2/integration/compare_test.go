@@ -986,6 +986,33 @@ func uriListFromGetUris(item map[string]any) []string {
 	return out
 }
 
+func TestGoAria2_GetVersionProtocols(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-version-protos"
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	ver := decodeJSON[map[string]any](t, mustCall(t, ctx, goAria, "aria2.getVersion"), "getVersion")
+	enabled, ok := ver["enabledProtocols"].([]any)
+	if !ok {
+		t.Fatalf("enabledProtocols: %#v", ver["enabledProtocols"])
+	}
+	for _, proto := range []string{"ftp", "sftp"} {
+		if !containsAny(enabled, proto) {
+			t.Fatalf("enabledProtocols missing %q: %#v", proto, enabled)
+		}
+	}
+}
+
+func containsAny(items []any, target string) bool {
+	for _, item := range items {
+		if s, ok := item.(string); ok && s == target {
+			return true
+		}
+	}
+	return false
+}
+
 func contains(items []string, target string) bool {
 	for _, item := range items {
 		if item == target {
