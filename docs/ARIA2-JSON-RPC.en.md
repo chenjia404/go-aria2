@@ -27,6 +27,8 @@ The body is a **JSON array** of request objects as above; the response is an arr
 - If `rpc-secret` **is** configured:  
   - The **first** `params` element must be `token:<secret>` matching the configured value;  
   - Following elements are the method parameters.
+- **Default (go-aria2 extension):** `system.listMethods`, `system.listNotifications`, and `system.multicall` may be called without a token.
+- **Strict mode:** set `rpc-strict-auth=true` (or `--rpc-strict-auth`) to require a token for **all** RPC methods, including `system.*`, matching aria2.
 
 Example (with secret):
 
@@ -76,7 +78,19 @@ Common `code` values:
 
 For `addUri`, `addTorrent`, `changeOption`, `changeGlobalOption`, etc., options are a **JSON object** with string keys; values are converted to **strings** internally (`fmt.Sprint`).
 
-Common keys (aria2-style; others may be accepted but not fully implemented) include: `dir`, `pause`, `max-concurrent-downloads`, `http-user-agent`, `http-referer`, `bt-tracker`, `bt-exclude-tracker`, **`select-file`** (BT: comma-separated 1-based indices and inclusive ranges `a-b`, same as aria2; usable in `addUri`/`addTorrent` and `changeOption`; empty or omitted means download all files), etc. See `buildGlobalOptions` in `internal/app/daemon.go` and driver code for the source of truth.
+Common keys include: `dir`, `pause`, `max-concurrent-downloads`, `http-user-agent`, `http-referer`, `bt-tracker`, **`select-file`**, etc. `referer` / `user-agent` are mapped to `http-referer` / `http-user-agent`.
+
+**Option matrix (round 9+):**
+
+| Option | Status |
+|--------|--------|
+| `dir`, `pause`, `out`, `max-download-limit`, `http-user-agent`, `split`, `select-file`, … | Implemented |
+| `file-allocation`, `header`, `min-split-size`, `index-out`, `piece-length` | **Not implemented** — returns `Option not implemented: <key>` |
+| Other keys | May be stored without driver semantics |
+
+`addUri` schemes: `http`, `https`, `ed2k`, `magnet`. `ftp`/`sftp` return `Unsupported URI scheme` (`-32602`).
+
+`changeUri` is HTTP(S)-only; BT/ED2K return `changeUri is not supported for this download`.
 
 ---
 

@@ -280,11 +280,13 @@ Phase-one and migration-related methods are implemented, including:
 
 - `aria2.addUri`
 - `aria2.addTorrent`
+- `aria2.addMetalink`
 - `aria2.remove`
 - `aria2.forceRemove`
 - `aria2.pause`
 - `aria2.forcePause`
 - `aria2.pauseAll`
+- `aria2.forcePauseAll`
 - `aria2.unpause`
 - `aria2.unpauseAll`
 - `aria2.tellStatus`
@@ -297,20 +299,31 @@ Phase-one and migration-related methods are implemented, including:
 - `aria2.getUris`
 - `aria2.getOption`
 - `aria2.changeOption`
+- `aria2.changePosition`
+- `aria2.changeUri`
 - `aria2.getGlobalOption`
 - `aria2.changeGlobalOption`
 - `aria2.getGlobalStat`
 - `aria2.getVersion`
 - `aria2.getSessionInfo`
 - `aria2.removeDownloadResult`
+- `aria2.purgeDownloadResult`
+- `aria2.saveSession`
+- `aria2.shutdown` / `aria2.forceShutdown`
 - `system.listMethods`
+- `system.listNotifications`
 - `system.multicall`
+- Extensions: `aria2.ping`, `native.*` (ED2K, etc.)
 
 Conventions:
 
 - `gid` is a 16-character hex string
 - Numeric fields in `tellStatus` are serialized as strings
 - `token:xxx` auth is supported
+- By default, `system.listMethods` / `system.listNotifications` / `system.multicall` work without a token; set **`rpc-strict-auth=true`** for aria2-style auth on all methods
+- `addUri` accepts `http`/`https`/`ed2k`/`magnet`; `ftp`/`sftp` return `Unsupported URI scheme`
+- Options without driver semantics (`file-allocation`, `header`, `min-split-size`, etc.) return `Option not implemented: <key>`
+- `changeUri` is HTTP(S)-only for now
 - WebSocket notifications honor `rpc-secret` via `?token=...`, `Authorization: token:...`, or `X-Auth-Token`
 
 ### Compatibility testing (aria2 parity)
@@ -379,8 +392,10 @@ Default session path comes from `save-session`; if unset, it falls under `data-d
 
 ## Known limitations
 
-- Not a full aria2 replacement; compatibility is still growing.
-- Some niche aria2 RPC methods are not implemented yet.
+- Not a full aria2 replacement; protocol and option semantics are still being aligned.
+- No FTP/SFTP; `addUri` accepts only `http`/`https`/`ed2k`/`magnet`.
+- Some aria2 options are validated but not yet implemented in drivers (see option matrix in `docs/ARIA2-JSON-RPC.en.md`).
+- `changeUri` is HTTP(S)-only for now.
 - Strict BT recovery needs torrent metadata to be available.
 - Full ED2K recovery is still being extended.
 

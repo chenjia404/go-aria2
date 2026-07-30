@@ -20,6 +20,9 @@ func mapManagerRPCError(err error) error {
 	if errors.Is(err, manager.ErrTaskNotFound) {
 		return jsonrpc.NewError(jsonrpc.CodeInvalidParams, err.Error())
 	}
+	if errors.Is(err, manager.ErrDriverNotFound) {
+		return jsonrpc.NewError(jsonrpc.CodeInvalidParams, "Unsupported URI scheme")
+	}
 	msg := err.Error()
 	switch {
 	case strings.Contains(msg, "unknown position mode"),

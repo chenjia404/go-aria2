@@ -10,6 +10,7 @@ type Config struct {
 	RPCAllowOriginAll       bool
 	RPCMaxRequestSize       int64
 	RPCSecret               string
+	RPCStrictAuth           bool
 	EnableWebSocket         bool
 	Dir                     string
 	DataDir                 string
