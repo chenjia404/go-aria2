@@ -26,6 +26,15 @@ func ResolveBoolOption(opts map[string]string, key string, fallback bool) bool {
 	}
 }
 
+// PauseRequestedFromChangeOption 解析 changeOption 中的 pause 字段。
+func PauseRequestedFromChangeOption(opts map[string]string) (pause bool, ok bool) {
+	value, found := opts["pause"]
+	if !found {
+		return false, false
+	}
+	return ResolveBoolOption(map[string]string{"pause": value}, "pause", false), true
+}
+
 // ShouldRejectExistingFile 在 allow-overwrite=false 且 continue=false 时拒绝已存在文件。
 func ShouldRejectExistingFile(opts map[string]string, existingSize int64) bool {
 	if existingSize <= 0 {

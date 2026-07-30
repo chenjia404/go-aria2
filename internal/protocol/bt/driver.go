@@ -493,8 +493,8 @@ func (d *Driver) GetPeers(ctx context.Context, taskID string) ([]manager.PeerInf
 
 // ChangeOption 支持 pause、select-file 等运行期切换；其余选项由 core 层保存在 Task.Options。
 func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[string]string) error {
-	if shouldPause, ok := opts["pause"]; ok {
-		if common.ResolveBoolOption(map[string]string{"pause": shouldPause}, "pause", false) {
+	if shouldPause, ok := common.PauseRequestedFromChangeOption(opts); ok {
+		if shouldPause {
 			if err := d.Pause(ctx, taskID, false); err != nil {
 				return err
 			}

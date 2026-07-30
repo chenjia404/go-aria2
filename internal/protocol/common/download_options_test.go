@@ -6,6 +6,23 @@ import (
 	"time"
 )
 
+func TestPauseRequestedFromChangeOption(t *testing.T) {
+	t.Parallel()
+
+	pause, ok := PauseRequestedFromChangeOption(map[string]string{"pause": "yes"})
+	if !ok || !pause {
+		t.Fatalf("pause=yes: got pause=%v ok=%v", pause, ok)
+	}
+	pause, ok = PauseRequestedFromChangeOption(map[string]string{"pause": "no"})
+	if !ok || pause {
+		t.Fatalf("pause=no: got pause=%v ok=%v", pause, ok)
+	}
+	_, ok = PauseRequestedFromChangeOption(map[string]string{})
+	if ok {
+		t.Fatal("expected missing pause")
+	}
+}
+
 func TestResolveBoolOption(t *testing.T) {
 	t.Parallel()
 

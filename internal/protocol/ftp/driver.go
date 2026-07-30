@@ -233,10 +233,10 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 	if _, ok := opts["max-download-limit"]; ok {
 		st.limiter = common.NewTaskDownloadLimiter(st.task.Options, d.limiter)
 	}
-	shouldPause, hasPause := opts["pause"]
+	shouldPause, hasPause := common.PauseRequestedFromChangeOption(opts)
 	d.mu.Unlock()
 	if hasPause {
-		if common.ResolveBoolOption(map[string]string{"pause": shouldPause}, "pause", false) {
+		if shouldPause {
 			return d.Pause(ctx, taskID, false)
 		}
 		return d.Start(ctx, taskID)
