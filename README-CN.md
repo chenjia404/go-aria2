@@ -322,8 +322,7 @@ ed2k-upload-slots=3
 - 支持 `token:xxx` 形式的鉴权参数
 - 默认模式下 `system.listMethods` / `system.listNotifications` / `system.multicall` 可免 token；设置 **`rpc-strict-auth=true`** 后与 aria2 一致，所有方法均需 token
 - `addUri` 支持 `http`/`https`/`ftp`/`sftp`/`ed2k`/`magnet`；其他 scheme 返回 `Unsupported URI scheme`
-- `file-allocation`（`none`/`trunc`/`prealloc`/`falloc`）与 `header` 已在 HTTP/FTP/SFTP 驱动落地
-- 尚未实现语义的选项（`min-split-size`、`index-out`、`piece-length`）会返回 `Option not implemented: <key>`
+- `file-allocation`（`none`/`trunc`/`prealloc`/`falloc`）、`header`、`min-split-size`、`piece-length`、`index-out` 已在 HTTP/FTP/SFTP/BT 驱动落地
 - `changeUri` 支持 HTTP(S)、BT（web seed）、FTP、SFTP 任务
 - WebSocket 通知端点同样遵循 `rpc-secret`，可通过 `?token=...`、`Authorization: token:...` 或 `X-Auth-Token` 传入
 
@@ -396,9 +395,7 @@ go test ./internal/compat/aria2/...
 ## 已知限制
 
 - 不是 aria2 的完整替代品，协议与选项语义仍在逐步对齐。
-- 不支持 FTP/SFTP 等协议；`addUri` 仅接受 `http`/`https`/`ed2k`/`magnet`。
-- 部分 aria2 选项仅校验格式、尚未在驱动层实现（见 `docs/ARIA2-JSON-RPC.zh-CN.md` 选项矩阵）。
-- `changeUri` 支持 HTTP(S)、BT web seed、FTP、SFTP。
+- 部分 aria2 高级选项（如 HTTP pipelining、实时分块校验）尚未实现。
 - BT 严格恢复依赖 torrent 元数据可用。
 - ED2K 的完整恢复能力仍在扩展中。
 

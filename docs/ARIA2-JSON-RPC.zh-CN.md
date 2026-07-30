@@ -85,8 +85,7 @@
 | 选项 | 状态 |
 |------|------|
 | `dir`、`pause`、`out`、`max-download-limit`、`http-user-agent`、`http-referer`、`bt-tracker`、`select-file`、`split` 等 | 已实现语义 |
-| `file-allocation`、`header` | **已实现**：HTTP/FTP/SFTP 驱动（`file-allocation`：`none`/`trunc`/`prealloc`/`falloc`；`header` 为多行 `Name: value`） |
-| `min-split-size`、`index-out`、`piece-length` | **未实现**：返回 `Option not implemented: <key>` |
+| `file-allocation`、`header`、`min-split-size`、`piece-length`、`index-out` | **已实现**：HTTP/FTP/SFTP/BT 驱动（见 aria2 手册语义） |
 | 其他未列出键 | 可能被接受并存储，但不保证驱动层生效 |
 
 `addUri` 支持的 scheme：`http`、`https`、`ftp`、`sftp`、`ed2k`、`magnet`。其他 scheme 返回 `Unsupported URI scheme`（`-32602`）。

@@ -322,8 +322,7 @@ Conventions:
 - `token:xxx` auth is supported
 - By default, `system.listMethods` / `system.listNotifications` / `system.multicall` work without a token; set **`rpc-strict-auth=true`** for aria2-style auth on all methods
 - `addUri` accepts `http`/`https`/`ftp`/`sftp`/`ed2k`/`magnet`; other schemes return `Unsupported URI scheme`
-- `file-allocation` (`none`/`trunc`/`prealloc`/`falloc`) and `header` are implemented in HTTP/FTP/SFTP drivers
-- Options without driver semantics (`min-split-size`, `index-out`, `piece-length`, etc.) return `Option not implemented: <key>`
+- `file-allocation` (`none`/`trunc`/`prealloc`/`falloc`), `header`, `min-split-size`, `piece-length`, and `index-out` are implemented in HTTP/FTP/SFTP/BT drivers
 - `changeUri` supports HTTP(S), BT (web seeds), FTP, and SFTP downloads
 - WebSocket notifications honor `rpc-secret` via `?token=...`, `Authorization: token:...`, or `X-Auth-Token`
 
