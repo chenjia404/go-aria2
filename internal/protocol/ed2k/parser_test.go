@@ -2,6 +2,17 @@ package ed2k
 
 import "testing"
 
+func TestBaseEMuleLinkStripsExtensions(t *testing.T) {
+	t.Parallel()
+
+	raw := "ed2k://|file|demo.iso|12345|abcdef1234567890abcdef1234567890|h=AICHVALUE|s=1.2.3.4:4662|/"
+	got := baseEMuleLink(raw)
+	want := "ed2k://|file|demo.iso|12345|abcdef1234567890abcdef1234567890|/"
+	if got != want {
+		t.Fatalf("baseEMuleLink: got %q want %q", got, want)
+	}
+}
+
 func TestParseLink(t *testing.T) {
 	item, err := parseLink("ed2k://|file|demo.iso|12345|abcdef1234567890abcdef1234567890|h=AICHVALUE|s=1.2.3.4:4662|/")
 	if err != nil {

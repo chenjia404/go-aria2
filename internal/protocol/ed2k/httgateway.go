@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	goed2k "github.com/monkeyWie/goed2k"
+	goed2k "github.com/goed2k/core"
 
 	ed2kmodel "github.com/chenjia404/go-aria2/internal/rpc/ed2kapi/model"
 )
@@ -225,7 +225,7 @@ type AddTransferParams struct {
 // AddTransferByED2K 解析 ED2K 并添加任务。
 func (g *HTTPGateway) AddTransferByED2K(ctx context.Context, p AddTransferParams) (*ed2kmodel.TransferDTO, error) {
 	_ = ctx
-	link, err := goed2k.ParseEMuleLink(strings.TrimSpace(p.ED2KLink))
+	link, err := goed2k.ParseEMuleLink(baseEMuleLink(strings.TrimSpace(p.ED2KLink)))
 	if err != nil {
 		return nil, ed2kmodel.NewAppError(ed2kmodel.CodeInvalidED2KLink, "invalid ed2k link", err)
 	}
