@@ -27,6 +27,7 @@ var globalDisallowedOptions = map[string]struct{}{
 	"rpc-listen-port":      {},
 	"rpc-listen-all":       {},
 	"rpc-secret":           {},
+	"rpc-strict-auth":      {},
 	"rpc-allow-origin-all": {},
 	"rpc-max-request-size": {},
 	"enable-websocket":     {},
@@ -46,17 +47,19 @@ var fileAllocationValues = map[string]struct{}{
 
 // validateAddOptions 校验 addUri/addTorrent/addMetalink 中的已知选项值。
 func validateAddOptions(opts map[string]string) error {
+	normalizeOptionKeys(opts)
 	for key, value := range opts {
 		if err := validateKnownOption(key, value); err != nil {
 			return err
 		}
 		opts[key] = normalizeOptionValue(key, value)
 	}
-	return nil
+	return rejectUnimplementedOptions(opts)
 }
 
 // prepareChangeTaskOptions 过滤全局专属选项并校验任务级选项值。
 func prepareChangeTaskOptions(opts map[string]string) (map[string]string, error) {
+	normalizeOptionKeys(opts)
 	filtered := make(map[string]string, len(opts))
 	for key, value := range opts {
 		if _, disallowed := taskDisallowedOptions[key]; disallowed {
@@ -67,11 +70,15 @@ func prepareChangeTaskOptions(opts map[string]string) (map[string]string, error)
 		}
 		filtered[key] = normalizeOptionValue(key, value)
 	}
+	if err := rejectUnimplementedOptions(filtered); err != nil {
+		return nil, err
+	}
 	return filtered, nil
 }
 
 // prepareChangeGlobalOptions 过滤不可运行时修改的选项并校验全局选项值。
 func prepareChangeGlobalOptions(opts map[string]string) (map[string]string, error) {
+	normalizeOptionKeys(opts)
 	filtered := make(map[string]string, len(opts))
 	for key, value := range opts {
 		if _, disallowed := globalDisallowedOptions[key]; disallowed {
@@ -84,6 +91,9 @@ func prepareChangeGlobalOptions(opts map[string]string) (map[string]string, erro
 			return nil, err
 		}
 		filtered[key] = normalizeOptionValue(key, value)
+	}
+	if err := rejectUnimplementedOptions(filtered); err != nil {
+		return nil, err
 	}
 	return filtered, nil
 }
@@ -207,16 +217,4 @@ func filterHiddenOptions(opts map[string]string) map[string]string {
 		out[key] = value
 	}
 	return out
-}
-
-// isValidURI 检查 aria2 addUri 接受的 URI 格式（需含 scheme 或为 magnet 链接）。
-func isValidURI(uri string) bool {
-	uri = strings.TrimSpace(uri)
-	if uri == "" {
-		return false
-	}
-	if strings.HasPrefix(strings.ToLower(uri), "magnet:?") {
-		return true
-	}
-	return strings.Contains(uri, "://")
 }
