@@ -20,6 +20,11 @@ func TestMapManagerRPCError(t *testing.T) {
 	if !ok || rpcErr.Code != jsonrpc.CodeInvalidParams {
 		t.Fatalf("remove download result: %#v", rpcErr)
 	}
+
+	rpcErr, ok = mapManagerRPCError(manager.ErrDriverNotFound).(*jsonrpc.RPCError)
+	if !ok || rpcErr.Code != jsonrpc.CodeInvalidParams {
+		t.Fatalf("driver not found: %#v", rpcErr)
+	}
 }
 
 func TestRpcMethod_ChangePosition_BadKeywordReturnsInvalidParams(t *testing.T) {

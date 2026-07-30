@@ -151,11 +151,11 @@ for i in $(seq 1 50); do
   sleep 0.1
 done
 
-echo "[e2e] system.listMethods (no token, expect error when secret set)"
+echo "[e2e] system.listMethods (no token, default permissive mode)"
 RESP="$(rpc_post '{"jsonrpc":"2.0","id":1,"method":"system.listMethods","params":[]}')"
-if ! json_has_error "$RESP"; then
+if ! json_has_result "$RESP"; then
   echo "$RESP" >&2
-  echo "[e2e] expected error for unauthenticated request" >&2
+  echo "[e2e] expected listMethods to work without token in default mode" >&2
   exit 1
 fi
 
