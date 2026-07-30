@@ -212,6 +212,9 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 		st.task.Options[k] = v
 	}
 	st.fileAlloc = common.ParseFileAllocation(st.task.Options)
+	if _, ok := opts["index-out"]; ok {
+		applyFTPIndexOut(st)
+	}
 	shouldPause, hasPause := opts["pause"]
 	d.mu.Unlock()
 	if hasPause {
@@ -280,6 +283,18 @@ func (d *Driver) download(ctx context.Context, taskID string) {
 		return
 	}
 
+	localSize := int64(0)
+	if info, err := os.Stat(st.outputPath); err == nil {
+		localSize = info.Size()
+	}
+	if common.ShouldRejectExistingFile(st.task.Options, localSize) {
+		d.fail(taskID, fmt.Errorf("target file already exists and allow-overwrite=false: %s", st.outputPath))
+		return
+	}
+	if common.ShouldResetExistingFile(st.task.Options, localSize) {
+		_ = os.Remove(st.outputPath)
+	}
+
 	start := st.active
 	if start < 0 || start >= len(st.endpoints) {
 		start = 0
@@ -309,7 +324,11 @@ func (d *Driver) download(ctx context.Context, taskID string) {
 }
 
 func (d *Driver) downloadEndpoint(ctx context.Context, taskID string, st *state, ep endpoint) error {
-	conn, err := ftp.Dial(ep.host+":"+ep.port, ftp.DialWithTimeout(30*time.Second))
+	dialTimeout := common.ParseTimeoutSeconds(st.task.Options, "connect-timeout")
+	if dialTimeout == 0 {
+		dialTimeout = 30 * time.Second
+	}
+	conn, err := ftp.Dial(ep.host+":"+ep.port, ftp.DialWithTimeout(dialTimeout))
 	if err != nil {
 		return err
 	}
@@ -331,7 +350,7 @@ func (d *Driver) downloadEndpoint(ctx context.Context, taskID string, st *state,
 	if info, statErr := os.Stat(st.outputPath); statErr == nil {
 		localSize = info.Size()
 	}
-	resumePartial := localSize > 0 && (total <= 0 || localSize < total)
+	resumePartial := common.ShouldResumePartial(st.task.Options, localSize, total)
 	file, offset, err := common.PrepareDownloadFile(st.outputPath, st.fileAlloc, localSize, total, resumePartial)
 	if err != nil {
 		return err
@@ -552,6 +571,23 @@ func (d *Driver) GetServers(ctx context.Context, taskID string) ([]manager.FileS
 		})
 	}
 	return []manager.FileServerInfo{{Index: 1, Servers: entries}}, nil
+}
+
+func applyFTPIndexOut(st *state) {
+	if st == nil || st.task == nil {
+		return
+	}
+	name := common.ResolveIndexOutName(st.task.Options, 1, st.task.Name)
+	newPath := filepath.Join(st.task.SaveDir, name)
+	st.outputPath = newPath
+	st.task.Name = name
+	if len(st.task.Files) > 0 {
+		st.task.Files[0].Path = newPath
+	}
+	if st.task.Meta == nil {
+		st.task.Meta = map[string]string{}
+	}
+	st.task.Meta["ftp.outputPath"] = newPath
 }
 
 // Ensure net package used for Dial compatibility on exotic hosts.

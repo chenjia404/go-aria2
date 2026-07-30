@@ -1003,6 +1003,16 @@ func TestGoAria2_GetVersionProtocols(t *testing.T) {
 			t.Fatalf("enabledProtocols missing %q: %#v", proto, enabled)
 		}
 	}
+	if containsAny(enabled, "ed2k") {
+		t.Fatalf("ed2k should not be enabled when ed2k-enable=false: %#v", enabled)
+	}
+	supported, ok := ver["supportedProtocols"].([]any)
+	if !ok {
+		t.Fatalf("supportedProtocols: %#v", ver["supportedProtocols"])
+	}
+	if !containsAny(supported, "magnet") {
+		t.Fatalf("supportedProtocols should list magnet: %#v", supported)
+	}
 }
 
 func containsAny(items []any, target string) bool {

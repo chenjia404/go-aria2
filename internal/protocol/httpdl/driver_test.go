@@ -456,3 +456,19 @@ func TestChunkedDownloadFailoverToMirror(t *testing.T) {
 		t.Fatalf("unexpected chunked payload length=%d", len(data))
 	}
 }
+
+func TestBuildClientAppliesTimeouts(t *testing.T) {
+	t.Parallel()
+
+	client := buildClient(Options{}, map[string]string{
+		"connect-timeout": "15",
+		"timeout":         "60",
+	})
+	if client.Timeout != 60*time.Second {
+		t.Fatalf("client timeout: %v", client.Timeout)
+	}
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok || transport.DialContext == nil {
+		t.Fatal("expected transport with DialContext")
+	}
+}

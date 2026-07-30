@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -353,6 +354,9 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 	st.customHeaders = resolveCustomHeaders(st.task.Options)
 	st.fileAlloc = common.ParseFileAllocation(st.task.Options)
 	st.limiter = buildTaskLimiter(d.limiter, d.defaults, st.task.Options)
+	if _, ok := opts["index-out"]; ok {
+		applyHTTPIndexOut(st)
+	}
 	shouldPause, hasPause := opts["pause"]
 	d.mu.Unlock()
 
@@ -366,6 +370,23 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 }
 
 // LoadSessionTasks 恢复会话中的 HTTP 任务�?
+func applyHTTPIndexOut(st *state) {
+	if st == nil || st.task == nil {
+		return
+	}
+	name := common.ResolveIndexOutName(st.task.Options, 1, st.task.Name)
+	newPath := filepath.Join(st.task.SaveDir, name)
+	st.outputPath = newPath
+	st.task.Name = name
+	if len(st.task.Files) > 0 {
+		st.task.Files[0].Path = newPath
+	}
+	if st.task.Meta == nil {
+		st.task.Meta = map[string]string{}
+	}
+	st.task.Meta["http.outputPath"] = newPath
+}
+
 func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globalOptions map[string]string) error {
 	_ = ctx
 	_ = globalOptions
@@ -447,11 +468,11 @@ func (d *Driver) download(ctx context.Context, taskID string) {
 	}
 
 	existingSize, _ := fileSize(st.outputPath)
-	if shouldRejectExistingFile(st.task.Options, existingSize) {
+	if common.ShouldRejectExistingFile(st.task.Options, existingSize) {
 		d.fail(taskID, fmt.Errorf("target file already exists and allow-overwrite=false: %s", st.outputPath))
 		return
 	}
-	if shouldResetExistingFile(st.task.Options, existingSize) {
+	if common.ShouldResetExistingFile(st.task.Options, existingSize) {
 		existingSize = 0
 	}
 	total, acceptRanges, err := d.probeResource(ctx, st)
@@ -1083,7 +1104,7 @@ func buildTaskClient(base Options, opts map[string]string) *http.Client {
 			resolved.MaxConnectionPerServer = parsed
 		}
 	}
-	return buildClient(resolved)
+	return buildClient(resolved, opts)
 }
 
 func buildTaskLimiter(base *byteLimiter, defaults Options, opts map[string]string) *byteLimiter {
@@ -1109,18 +1130,28 @@ func buildTaskLimiter(base *byteLimiter, defaults Options, opts map[string]strin
 	return base
 }
 
-func buildClient(opts Options) *http.Client {
+func buildClient(opts Options, taskOpts map[string]string) *http.Client {
+	connectTimeout := common.ParseTimeoutSeconds(taskOpts, "connect-timeout")
+	requestTimeout := common.ParseTimeoutSeconds(taskOpts, "timeout")
+
+	dialer := &net.Dialer{}
+	if connectTimeout > 0 {
+		dialer.Timeout = connectTimeout
+	}
 	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: !opts.CheckCertificate}, //nolint:gosec // aria2 兼容配置需要支持关闭证书校验�?		Proxy:           proxyFunc(opts),
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: !opts.CheckCertificate}, //nolint:gosec
+		Proxy:           proxyFunc(opts),
+		DialContext:     dialer.DialContext,
 	}
 	if opts.MaxConnectionPerServer > 0 {
 		transport.MaxConnsPerHost = opts.MaxConnectionPerServer
 	}
-	return &http.Client{
-		Transport: transport,
+	client := &http.Client{Transport: transport}
+	if requestTimeout > 0 {
+		client.Timeout = requestTimeout
 	}
+	return client
 }
-
 func defaultUserAgent(opts Options) string {
 	if opts.UserAgent != "" {
 		return opts.UserAgent
@@ -1207,9 +1238,9 @@ func shouldAutoRenameOnAdd(opts map[string]string, outputPath string) bool {
 	if info.IsDir() {
 		return false
 	}
-	allowOverwrite := resolveBoolOption(opts, "allow-overwrite", false)
-	continueDownloads := resolveBoolOption(opts, "continue", true)
-	autoFileRenaming := resolveBoolOption(opts, "auto-file-renaming", false)
+	allowOverwrite := common.ResolveBoolOption(opts, "allow-overwrite", false)
+	continueDownloads := common.ResolveBoolOption(opts, "continue", true)
+	autoFileRenaming := common.ResolveBoolOption(opts, "auto-file-renaming", false)
 	return autoFileRenaming && !allowOverwrite && !continueDownloads
 }
 
@@ -1225,21 +1256,11 @@ func parseBoolOption(value string) (bool, error) {
 }
 
 func shouldRejectExistingFile(opts map[string]string, existingSize int64) bool {
-	if existingSize <= 0 {
-		return false
-	}
-	allowOverwrite := resolveBoolOption(opts, "allow-overwrite", false)
-	continueDownloads := resolveBoolOption(opts, "continue", true)
-	return !allowOverwrite && !continueDownloads
+	return common.ShouldRejectExistingFile(opts, existingSize)
 }
 
 func shouldResetExistingFile(opts map[string]string, existingSize int64) bool {
-	if existingSize <= 0 {
-		return false
-	}
-	allowOverwrite := resolveBoolOption(opts, "allow-overwrite", false)
-	continueDownloads := resolveBoolOption(opts, "continue", true)
-	return allowOverwrite && !continueDownloads
+	return common.ShouldResetExistingFile(opts, existingSize)
 }
 
 func optionInt(options map[string]string, key string, fallback int) int {

@@ -25,13 +25,15 @@ type Service struct {
 	sessionID   string
 	sessionPath string
 	ed2kNative  ED2KNativeAPI
+	ed2kEnabled bool
 	onShutdown  func(force bool)
 }
 
 // ServiceConfig 配置 aria2 兼容 RPC 服务。
 type ServiceConfig struct {
-	RPCSecret  string
-	StrictAuth bool
+	RPCSecret   string
+	StrictAuth  bool
+	ED2KEnabled bool
 }
 
 // NewService 创建 aria2 兼容 JSON-RPC 服务。
@@ -82,12 +84,13 @@ func NewServiceWithConfig(mgr *manager.Manager, cfg ServiceConfig) *Service {
 	}
 
 	return &Service{
-		manager:    mgr,
-		rpcSecret:  cfg.RPCSecret,
-		strictAuth: cfg.StrictAuth,
-		methods:    append(append([]string(nil), methods...), nativeMethodNames...),
-		startedAt:  time.Now(),
-		sessionID:  newSessionID(),
+		manager:     mgr,
+		rpcSecret:   cfg.RPCSecret,
+		strictAuth:  cfg.StrictAuth,
+		ed2kEnabled: cfg.ED2KEnabled,
+		methods:     append(append([]string(nil), methods...), nativeMethodNames...),
+		startedAt:   time.Now(),
+		sessionID:   newSessionID(),
 	}
 }
 
@@ -720,6 +723,15 @@ func multicallErrorFromErr(err error) map[string]any {
 // releaseDate 与构建版本对齐，避免每次 RPC 调用返回值变化（aria2 为固定发布日期）。
 const releaseDate = "2026-07-29"
 
+var supportedProtocolsAll = []string{"bt", "ed2k", "ftp", "http", "https", "magnet", "sftp"}
+
+func buildEnabledProtocols(ed2kEnabled bool) []string {
+	if ed2kEnabled {
+		return []string{"bt", "ed2k", "ftp", "http", "https", "sftp"}
+	}
+	return []string{"bt", "ftp", "http", "https", "sftp"}
+}
+
 func (s *Service) getVersion() map[string]any {
 	return map[string]any{
 		"version":            "0.1.1",
@@ -728,8 +740,8 @@ func (s *Service) getVersion() map[string]any {
 		"releaseDate":        releaseDate,
 		"organization":       "github.com/chenjia404/go-aria2",
 		"copyright":          "github.com/chenjia404/go-aria2 contributors",
-		"enabledProtocols":   []string{"bt", "ed2k", "ftp", "http", "https", "sftp"},
-		"supportedProtocols": []string{"bt", "ed2k", "ftp", "http", "https", "sftp"},
+		"enabledProtocols":   buildEnabledProtocols(s.ed2kEnabled),
+		"supportedProtocols": append([]string(nil), supportedProtocolsAll...),
 	}
 }
 

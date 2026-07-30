@@ -322,7 +322,11 @@ ed2k-upload-slots=3
 - 支持 `token:xxx` 形式的鉴权参数
 - 默认模式下 `system.listMethods` / `system.listNotifications` / `system.multicall` 可免 token；设置 **`rpc-strict-auth=true`** 后与 aria2 一致，所有方法均需 token
 - `addUri` 支持 `http`/`https`/`ftp`/`sftp`/`ed2k`/`magnet`；其他 scheme 返回 `Unsupported URI scheme`
-- `file-allocation`（`none`/`trunc`/`prealloc`/`falloc`）、`index-out` 已在 HTTP/FTP/SFTP/BT 驱动落地；`header`、`min-split-size`、`piece-length` 仅 HTTP 驱动
+- `file-allocation`（`none`/`trunc`/`prealloc`/`falloc`）、`index-out` 已在 HTTP/FTP/SFTP/BT 驱动落地；`changeOption` 更新 `index-out` 时同步输出路径
+- `connect-timeout`、`timeout` 在 HTTP 驱动生效；`connect-timeout` 亦用于 FTP/SFTP 连接
+- `continue`、`allow-overwrite` 在 HTTP/FTP/SFTP 驱动生效
+- `seed-ratio`、`seed-time` 支持任务级覆盖全局 BT 做种策略
+- `getVersion.enabledProtocols` 随 `ed2k-enable` 动态变化；`supportedProtocols` 含 `magnet`
 - `changeUri` 支持 HTTP(S)、BT（web seed）、FTP、SFTP、ED2K 任务
 - WebSocket 通知端点同样遵循 `rpc-secret`，可通过 `?token=...`、`Authorization: token:...` 或 `X-Auth-Token` 传入
 
