@@ -275,8 +275,8 @@ func (d *Driver) GetPeers(ctx context.Context, taskID string) ([]manager.PeerInf
 
 // ChangeOption 支持 pause 选项的动态切换�?
 func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[string]string) error {
-	if shouldPause, ok := opts["pause"]; ok {
-		if common.ResolveBoolOption(map[string]string{"pause": shouldPause}, "pause", false) {
+	if shouldPause, ok := common.PauseRequestedFromChangeOption(opts); ok {
+		if shouldPause {
 			return d.Pause(ctx, taskID, false)
 		}
 		return d.Start(ctx, taskID)
