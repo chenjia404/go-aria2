@@ -47,7 +47,7 @@ type state struct {
 	referer       string
 	customHeaders map[string]string
 	fileAlloc     common.FileAllocationMode
-	limiter       *byteLimiter
+	limiter       *common.ByteLimiter
 	progressBase int64
 	progressDone int64
 	cancel       context.CancelFunc
@@ -63,7 +63,7 @@ type Driver struct {
 	mu       sync.RWMutex
 	defaults Options
 	tasks    map[string]*state
-	limiter  *byteLimiter
+	limiter  *common.ByteLimiter
 }
 
 // New 创建 HTTP/HTTPS 驱动�?
@@ -71,7 +71,7 @@ func New(opts Options) *Driver {
 	return &Driver{
 		defaults: opts,
 		tasks:    make(map[string]*state),
-		limiter:  newByteLimiter(opts.MaxOverallDownloadLimit),
+		limiter:  common.NewByteLimiter(opts.MaxOverallDownloadLimit),
 	}
 }
 
@@ -144,7 +144,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 		referer:       resolveStringOption(input.Options, "http-referer", d.defaults.Referer),
 		customHeaders: resolveCustomHeaders(input.Options),
 		fileAlloc:     common.ParseFileAllocation(input.Options),
-		limiter:       buildTaskLimiter(d.limiter, d.defaults, input.Options),
+		limiter:       common.NewTaskDownloadLimiter(input.Options, d.limiter),
 		lastTick:      time.Now(),
 	}
 	d.mu.Unlock()
@@ -353,7 +353,7 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 	st.referer = resolveStringOption(st.task.Options, "http-referer", d.defaults.Referer)
 	st.customHeaders = resolveCustomHeaders(st.task.Options)
 	st.fileAlloc = common.ParseFileAllocation(st.task.Options)
-	st.limiter = buildTaskLimiter(d.limiter, d.defaults, st.task.Options)
+	st.limiter = common.NewTaskDownloadLimiter(st.task.Options, d.limiter)
 	if _, ok := opts["index-out"]; ok {
 		applyHTTPIndexOut(st)
 	}
@@ -422,7 +422,7 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 			referer:       resolveStringOption(saved.Options, "http-referer", d.defaults.Referer),
 			customHeaders: resolveCustomHeaders(saved.Options),
 			fileAlloc:     common.ParseFileAllocation(saved.Options),
-			limiter:       buildTaskLimiter(d.limiter, d.defaults, saved.Options),
+			limiter:       common.NewTaskDownloadLimiter(saved.Options, d.limiter),
 			paused:     saved.Status == task.StatusPaused,
 			running:    saved.Status == task.StatusActive,
 			lastTick:   time.Now(),
@@ -1122,29 +1122,6 @@ func buildTaskClient(base Options, opts map[string]string) *http.Client {
 	return buildClient(resolved, opts)
 }
 
-func buildTaskLimiter(base *byteLimiter, defaults Options, opts map[string]string) *byteLimiter {
-	if opts == nil {
-		return base
-	}
-	if value, ok := opts["max-download-limit"]; ok {
-		if parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil {
-			if parsed <= 0 {
-				return nil
-			}
-			return newByteLimiter(parsed)
-		}
-	}
-	if value, ok := opts["max-overall-download-limit"]; ok {
-		if parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil {
-			if parsed <= 0 {
-				return nil
-			}
-			return newByteLimiter(parsed)
-		}
-	}
-	return base
-}
-
 func buildClient(opts Options, taskOpts map[string]string) *http.Client {
 	connectTimeout := common.ParseTimeoutSeconds(taskOpts, "connect-timeout")
 	requestTimeout := common.ParseTimeoutSeconds(taskOpts, "timeout")
@@ -1363,77 +1340,6 @@ func maxInt64(a, b int64) int64 {
 		return a
 	}
 	return b
-}
-
-type byteLimiter struct {
-	mu       sync.Mutex
-	rate     int64
-	tokens   float64
-	lastFill time.Time
-}
-
-func newByteLimiter(rate int64) *byteLimiter {
-	if rate <= 0 {
-		return nil
-	}
-	return &byteLimiter{
-		rate:     rate,
-		tokens:   float64(rate),
-		lastFill: time.Now(),
-	}
-}
-
-func (l *byteLimiter) setRate(rate int64) {
-	if l == nil {
-		return
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.rate = rate
-	if rate > 0 && l.tokens > float64(rate) {
-		l.tokens = float64(rate)
-	}
-}
-
-func (l *byteLimiter) Wait(ctx context.Context, n int64) error {
-	if l == nil || n <= 0 {
-		return nil
-	}
-
-	need := float64(n)
-	for {
-		l.mu.Lock()
-		now := time.Now()
-		if !l.lastFill.IsZero() {
-			elapsed := now.Sub(l.lastFill).Seconds()
-			if elapsed > 0 {
-				l.tokens += elapsed * float64(l.rate)
-				if l.tokens > float64(l.rate) {
-					l.tokens = float64(l.rate)
-				}
-				l.lastFill = now
-			}
-		}
-		if l.tokens >= need {
-			l.tokens -= need
-			l.mu.Unlock()
-			return nil
-		}
-		deficit := need - l.tokens
-		wait := time.Duration(deficit / float64(l.rate) * float64(time.Second))
-		if wait < time.Millisecond {
-			wait = time.Millisecond
-		}
-		l.mu.Unlock()
-
-		timer := time.NewTimer(wait)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
-		case <-timer.C:
-		}
-	}
 }
 
 func cloneMap(src map[string]string) map[string]string {
