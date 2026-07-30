@@ -721,7 +721,7 @@ func multicallErrorFromErr(err error) map[string]any {
 }
 
 // releaseDate 与构建版本对齐，避免每次 RPC 调用返回值变化（aria2 为固定发布日期）。
-const releaseDate = "2026-07-29"
+const releaseDate = "2026-07-30"
 
 var supportedProtocolsAll = []string{"bt", "ed2k", "ftp", "http", "https", "magnet", "sftp"}
 
@@ -734,9 +734,9 @@ func buildEnabledProtocols(ed2kEnabled bool) []string {
 
 func (s *Service) getVersion() map[string]any {
 	return map[string]any{
-		"version":            "0.1.1",
+		"version":            "0.2.0",
 		"enabledFeatures":    []string{"BitTorrent", "ED2K", "HTTP", "JSON-RPC", "XML-RPC", "WebSocket"},
-		"fullVersion":        "github.com/chenjia404/go-aria2/0.1.1",
+		"fullVersion":        "github.com/chenjia404/go-aria2/0.2.0",
 		"releaseDate":        releaseDate,
 		"organization":       "github.com/chenjia404/go-aria2",
 		"copyright":          "github.com/chenjia404/go-aria2 contributors",
