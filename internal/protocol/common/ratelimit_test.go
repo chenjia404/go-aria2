@@ -47,4 +47,10 @@ func TestNewTaskDownloadLimiter(t *testing.T) {
 	if got := NewTaskDownloadLimiter(map[string]string{"max-download-limit": "0"}, base); got != nil {
 		t.Fatalf("zero limit should disable")
 	}
+	if got := NewTaskDownloadLimiter(map[string]string{"max-overall-download-limit": "2048"}, base); got != base {
+		t.Fatalf("max-overall should reuse base limiter, got %p want %p", got, base)
+	}
+	if got := NewTaskDownloadLimiter(map[string]string{"max-overall-download-limit": "2048"}, nil); got == nil {
+		t.Fatal("expected standalone limiter without base")
+	}
 }

@@ -10,7 +10,7 @@ import (
 func TestChangeURI_SFTPMirrors(t *testing.T) {
 	t.Parallel()
 
-	driver := New()
+	driver := New(Options{})
 	item, err := driver.Add(context.Background(), task.AddTaskInput{
 		URI:     "sftp://user:pass@mirror1.example/file.bin",
 		URIs:    []string{"sftp://user:pass@mirror2.example/file.bin"},

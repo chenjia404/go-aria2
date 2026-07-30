@@ -41,17 +41,28 @@ type state struct {
 	removed    bool
 	fileAlloc  common.FileAllocationMode
 	limiter    *common.ByteLimiter
+	lastTick   time.Time
+	lastBytes  int64
+}
+
+// Options 配置 FTP 驱动。
+type Options struct {
+	MaxOverallDownloadLimit int64
 }
 
 // Driver 实现 aria2 兼容的 FTP 下载。
 type Driver struct {
-	mu    sync.RWMutex
-	tasks map[string]*state
+	mu      sync.RWMutex
+	tasks   map[string]*state
+	limiter *common.ByteLimiter
 }
 
 // New 创建 FTP 驱动。
-func New() *Driver {
-	return &Driver{tasks: make(map[string]*state)}
+func New(opts Options) *Driver {
+	return &Driver{
+		tasks:   make(map[string]*state),
+		limiter: common.NewByteLimiter(opts.MaxOverallDownloadLimit),
+	}
 }
 
 func (d *Driver) Name() string { return "ftp" }
@@ -99,7 +110,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 		endpoints:  eps,
 		outputPath: outputPath,
 		fileAlloc:  common.ParseFileAllocation(input.Options),
-		limiter:    common.NewTaskDownloadLimiter(input.Options, nil),
+		limiter:    common.NewTaskDownloadLimiter(input.Options, d.limiter),
 	}
 	d.mu.Unlock()
 	return item.Clone(), nil
@@ -144,6 +155,8 @@ func (d *Driver) Pause(ctx context.Context, taskID string, force bool) error {
 	}
 	st.running = false
 	st.task.Status = task.StatusPaused
+	st.task.DownloadSpeed = 0
+	st.task.Connections = 0
 	st.task.UpdatedAt = time.Now()
 	d.mu.Unlock()
 	return nil
@@ -218,7 +231,7 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 		applyFTPIndexOut(st)
 	}
 	if _, ok := opts["max-download-limit"]; ok {
-		st.limiter = common.NewTaskDownloadLimiter(st.task.Options, nil)
+		st.limiter = common.NewTaskDownloadLimiter(st.task.Options, d.limiter)
 	}
 	shouldPause, hasPause := opts["pause"]
 	d.mu.Unlock()
@@ -382,6 +395,12 @@ func (d *Driver) downloadEndpoint(ctx context.Context, taskID string, st *state,
 
 	buf := make([]byte, 32*1024)
 	written := offset
+	d.mu.Lock()
+	if cur := d.tasks[taskID]; cur != nil {
+		cur.lastTick = time.Now()
+		cur.lastBytes = written
+	}
+	d.mu.Unlock()
 	for {
 		select {
 		case <-ctx.Done():
@@ -419,16 +438,7 @@ func (d *Driver) advance(taskID string, completed, total int64) {
 	if st == nil || st.removed {
 		return
 	}
-	st.task.CompletedLength = completed
-	if total > 0 {
-		st.task.TotalLength = total
-		if len(st.task.Files) > 0 {
-			st.task.Files[0].Length = total
-			st.task.Files[0].CompletedLength = completed
-		}
-	}
-	st.task.Status = task.StatusActive
-	st.task.UpdatedAt = time.Now()
+	common.ApplyTransferProgress(st.task, completed, total, &st.lastBytes, &st.lastTick)
 }
 
 func (d *Driver) complete(taskID string) {
@@ -439,6 +449,8 @@ func (d *Driver) complete(taskID string) {
 		return
 	}
 	st.task.Status = task.StatusComplete
+	st.task.DownloadSpeed = 0
+	st.task.Connections = 0
 	st.task.UpdatedAt = time.Now()
 }
 
@@ -451,6 +463,8 @@ func (d *Driver) fail(taskID string, err error) {
 	}
 	st.task.Status = task.StatusError
 	st.task.ErrorMessage = err.Error()
+	st.task.DownloadSpeed = 0
+	st.task.Connections = 0
 	st.task.UpdatedAt = time.Now()
 }
 
@@ -462,6 +476,8 @@ func (d *Driver) pauseAfterCancel(taskID string) {
 		return
 	}
 	st.task.Status = task.StatusPaused
+	st.task.DownloadSpeed = 0
+	st.task.Connections = 0
 	st.task.UpdatedAt = time.Now()
 }
 
