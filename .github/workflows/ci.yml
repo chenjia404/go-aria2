@@ -1,11 +1,15 @@
 name: ci
 
 on:
+  # 仅主分支 push 触发，避免 PR 分支 push 与 pull_request 重复跑同一套 CI
   push:
+    branches:
+      - master
+      - main
   pull_request:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
