@@ -7,7 +7,9 @@ import (
 	"github.com/chenjia404/go-aria2/internal/core/manager"
 	"github.com/chenjia404/go-aria2/internal/protocol/bt"
 	"github.com/chenjia404/go-aria2/internal/protocol/ed2k"
+	"github.com/chenjia404/go-aria2/internal/protocol/ftp"
 	"github.com/chenjia404/go-aria2/internal/protocol/httpdl"
+	sftpproto "github.com/chenjia404/go-aria2/internal/protocol/sftpproto"
 )
 
 // registeredDrivers 保存已注册到 manager 的协议驱动实例，供 daemon 后续挂载 ED2K 网关等。
@@ -64,6 +66,8 @@ func registerProtocolDrivers(mgr *manager.Manager, cfg *config.Config, paths run
 		out.ED2K = ed2kDriver
 	}
 
+	mgr.RegisterDriver(ftp.New())
+	mgr.RegisterDriver(sftpproto.New())
 	mgr.RegisterDriver(httpdl.New(httpdl.Options{
 		UserAgent:               cfg.HTTPUserAgent,
 		Referer:                 cfg.HTTPReferer,

@@ -85,12 +85,13 @@ Common keys include: `dir`, `pause`, `max-concurrent-downloads`, `http-user-agen
 | Option | Status |
 |--------|--------|
 | `dir`, `pause`, `out`, `max-download-limit`, `http-user-agent`, `split`, `select-file`, … | Implemented |
-| `file-allocation`, `header`, `min-split-size`, `index-out`, `piece-length` | **Not implemented** — returns `Option not implemented: <key>` |
+| `file-allocation`, `header` | **Implemented** in HTTP/FTP/SFTP drivers (`file-allocation`: `none`/`trunc`/`prealloc`/`falloc`; `header` as multiline `Name: value`) |
+| `min-split-size`, `index-out`, `piece-length` | **Not implemented** — returns `Option not implemented: <key>` |
 | Other keys | May be stored without driver semantics |
 
-`addUri` schemes: `http`, `https`, `ed2k`, `magnet`. `ftp`/`sftp` return `Unsupported URI scheme` (`-32602`).
+`addUri` schemes: `http`, `https`, `ftp`, `sftp`, `ed2k`, `magnet`. Other schemes return `Unsupported URI scheme` (`-32602`).
 
-`changeUri` is HTTP(S)-only; BT/ED2K return `changeUri is not supported for this download`.
+`changeUri` supports HTTP(S), BT web seeds, FTP, and SFTP; ED2K still returns `changeUri is not supported for this download`.
 
 ---
 

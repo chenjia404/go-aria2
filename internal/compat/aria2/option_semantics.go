@@ -8,11 +8,9 @@ import (
 
 // unimplementedOptions 已通过格式校验但尚未在驱动层实现语义的选项。
 var unimplementedOptions = map[string]struct{}{
-	"file-allocation": {},
-	"header":          {},
-	"min-split-size":  {},
-	"index-out":       {},
-	"piece-length":    {},
+	"min-split-size": {},
+	"index-out":      {},
+	"piece-length":   {},
 }
 
 // optionAliases 将 aria2 别名选项规范为 go-aria2 内部使用的键名。

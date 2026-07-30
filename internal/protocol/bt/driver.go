@@ -44,6 +44,7 @@ type state struct {
 	torrent        *torrentlib.Torrent
 	source         addSource
 	saveDir        string
+	webSeeds       []string
 	started        bool
 	paused         bool
 	removed        bool
@@ -282,10 +283,14 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 		torrent:    tor,
 		source:     result.Source,
 		saveDir:    input.SaveDir,
+		webSeeds:   append([]string(nil), result.Spec.Webseeds...),
 		paused:     false,
 		started:    false,
 		selectFile: strings.TrimSpace(input.Options["select-file"]),
 		options:    cloneMap(input.Options),
+	}
+	if len(item.Files) > 0 {
+		item.Files[0].URIs = d.btURIsForFile(st, 1)
 	}
 	d.mu.Lock()
 	d.tasks[item.ID] = st
@@ -565,12 +570,16 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 			torrent:    tor,
 			source:     result.Source,
 			saveDir:    saved.SaveDir,
+			webSeeds:   webSeedsFromSession(saved),
 			started:    false,
 			paused:     saved.Status == task.StatusPaused,
 			completed:  saved.CompletedLength,
 			verified:   saved.VerifiedLength,
 			selectFile: strings.TrimSpace(effOpts["select-file"]),
 			options:    cloneMap(effOpts),
+		}
+		if len(st.webSeeds) > 0 {
+			tor.AddWebSeeds(st.webSeeds)
 		}
 
 		d.mu.Lock()
@@ -752,6 +761,7 @@ func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, 
 	state.lastWriteBytes = writeBytes
 	item.UploadedLength = writeBytes
 	applyCompletedToFiles(item.Files, item.CompletedLength)
+	d.attachBTFileURIs(state, item.Files)
 
 	switch {
 	case forcedStatus != "":
@@ -783,6 +793,49 @@ func applyCompletedToFiles(files []task.File, total int64) {
 		files[i].CompletedLength = remaining
 		remaining = 0
 	}
+}
+
+func (d *Driver) attachBTFileURIs(st *state, files []task.File) {
+	if st == nil || len(files) == 0 {
+		return
+	}
+	uris := d.btURIsForFile(st, 1)
+	if len(uris) == 0 {
+		return
+	}
+	files[0].URIs = append([]string(nil), uris...)
+}
+
+func (d *Driver) btURIsForFile(st *state, fileIndex int) []string {
+	if st == nil || fileIndex != 1 {
+		return nil
+	}
+	uris := make([]string, 0, 1+len(st.webSeeds))
+	if st.source.URI != "" {
+		uris = append(uris, st.source.URI)
+	}
+	uris = append(uris, st.webSeeds...)
+	return uris
+}
+
+func webSeedsFromSession(saved *task.Task) []string {
+	if saved == nil || len(saved.Files) == 0 {
+		return nil
+	}
+	sourceURI := ""
+	if saved.Meta != nil {
+		sourceURI = saved.Meta["bt.source.uri"]
+	}
+	out := make([]string, 0)
+	for _, uri := range saved.Files[0].URIs {
+		if uri == "" || uri == sourceURI {
+			continue
+		}
+		if isWebSeedURL(uri) {
+			out = append(out, uri)
+		}
+	}
+	return dedupeStrings(out)
 }
 
 func torrentFiles(tor *torrentlib.Torrent) []task.File {

@@ -85,12 +85,13 @@
 | 选项 | 状态 |
 |------|------|
 | `dir`、`pause`、`out`、`max-download-limit`、`http-user-agent`、`http-referer`、`bt-tracker`、`select-file`、`split` 等 | 已实现语义 |
-| `file-allocation`、`header`、`min-split-size`、`index-out`、`piece-length` | **未实现**：返回 `Option not implemented: <key>` |
+| `file-allocation`、`header` | **已实现**：HTTP/FTP/SFTP 驱动（`file-allocation`：`none`/`trunc`/`prealloc`/`falloc`；`header` 为多行 `Name: value`） |
+| `min-split-size`、`index-out`、`piece-length` | **未实现**：返回 `Option not implemented: <key>` |
 | 其他未列出键 | 可能被接受并存储，但不保证驱动层生效 |
 
-`addUri` 支持的 scheme：`http`、`https`、`ed2k`、`magnet`。`ftp`/`sftp` 等返回 `Unsupported URI scheme`（`-32602`）。
+`addUri` 支持的 scheme：`http`、`https`、`ftp`、`sftp`、`ed2k`、`magnet`。其他 scheme 返回 `Unsupported URI scheme`（`-32602`）。
 
-`changeUri` 当前仅 HTTP(S) 下载可用；BT/ED2K 返回 `changeUri is not supported for this download`。
+`changeUri` 支持 HTTP(S)、BT web seed、FTP、SFTP；ED2K 仍返回 `changeUri is not supported for this download`。
 
 ---
 

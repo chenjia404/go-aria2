@@ -9,9 +9,11 @@ import (
 
 // supportedAddURISchemes 与 getVersion.supportedProtocols 对齐的 addUri scheme。
 var supportedAddURISchemes = map[string]struct{}{
+	"ftp":   {},
 	"http":  {},
 	"https": {},
 	"ed2k":  {},
+	"sftp":  {},
 }
 
 func validateAddURIScheme(uri string) error {

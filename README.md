@@ -321,9 +321,10 @@ Conventions:
 - Numeric fields in `tellStatus` are serialized as strings
 - `token:xxx` auth is supported
 - By default, `system.listMethods` / `system.listNotifications` / `system.multicall` work without a token; set **`rpc-strict-auth=true`** for aria2-style auth on all methods
-- `addUri` accepts `http`/`https`/`ed2k`/`magnet`; `ftp`/`sftp` return `Unsupported URI scheme`
-- Options without driver semantics (`file-allocation`, `header`, `min-split-size`, etc.) return `Option not implemented: <key>`
-- `changeUri` is HTTP(S)-only for now
+- `addUri` accepts `http`/`https`/`ftp`/`sftp`/`ed2k`/`magnet`; other schemes return `Unsupported URI scheme`
+- `file-allocation` (`none`/`trunc`/`prealloc`/`falloc`) and `header` are implemented in HTTP/FTP/SFTP drivers
+- Options without driver semantics (`min-split-size`, `index-out`, `piece-length`, etc.) return `Option not implemented: <key>`
+- `changeUri` supports HTTP(S), BT (web seeds), FTP, and SFTP downloads
 - WebSocket notifications honor `rpc-secret` via `?token=...`, `Authorization: token:...`, or `X-Auth-Token`
 
 ### Compatibility testing (aria2 parity)
@@ -395,7 +396,7 @@ Default session path comes from `save-session`; if unset, it falls under `data-d
 - Not a full aria2 replacement; protocol and option semantics are still being aligned.
 - No FTP/SFTP; `addUri` accepts only `http`/`https`/`ed2k`/`magnet`.
 - Some aria2 options are validated but not yet implemented in drivers (see option matrix in `docs/ARIA2-JSON-RPC.en.md`).
-- `changeUri` is HTTP(S)-only for now.
+- `changeUri` supports HTTP(S), BT web seeds, FTP, and SFTP.
 - Strict BT recovery needs torrent metadata to be available.
 - Full ED2K recovery is still being extended.
 

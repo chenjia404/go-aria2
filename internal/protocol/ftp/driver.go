@@ -1,0 +1,536 @@
+package ftp
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"net"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/jlaffaye/ftp"
+
+	"github.com/chenjia404/go-aria2/internal/core/manager"
+	"github.com/chenjia404/go-aria2/internal/core/task"
+	"github.com/chenjia404/go-aria2/internal/protocol/common"
+)
+
+type endpoint struct {
+	rawURL   string
+	user     string
+	password string
+	host     string
+	port     string
+	remote   string
+}
+
+type state struct {
+	task       *task.Task
+	endpoints  []endpoint
+	active     int
+	outputPath string
+	cancel     context.CancelFunc
+	running    bool
+	paused     bool
+	removed    bool
+	fileAlloc  common.FileAllocationMode
+}
+
+// Driver 实现 aria2 兼容的 FTP 下载。
+type Driver struct {
+	mu    sync.RWMutex
+	tasks map[string]*state
+}
+
+// New 创建 FTP 驱动。
+func New() *Driver {
+	return &Driver{tasks: make(map[string]*state)}
+}
+
+func (d *Driver) Name() string { return "ftp" }
+
+func (d *Driver) CanHandle(input task.AddTaskInput) bool {
+	for _, uri := range append([]string{input.URI}, input.URIs...) {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(uri)), "ftp://") {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, error) {
+	_ = ctx
+	eps, err := collectEndpoints(input)
+	if err != nil {
+		return nil, err
+	}
+	name := deriveName(eps[0], input.Name)
+	outputPath := filepath.Join(input.SaveDir, name)
+
+	item := &task.Task{
+		ID:       newID(),
+		Protocol: task.Protocol("ftp"),
+		Name:     name,
+		Status:   task.StatusWaiting,
+		SaveDir:  input.SaveDir,
+		Files: []task.File{{
+			Index:    1,
+			Path:     outputPath,
+			Selected: true,
+			URIs:     endpointURLs(eps),
+		}},
+		Options: cloneMap(input.Options),
+		Meta: map[string]string{
+			"ftp.outputPath": outputPath,
+		},
+	}
+
+	d.mu.Lock()
+	d.tasks[item.ID] = &state{
+		task:       item.Clone(),
+		endpoints:  eps,
+		outputPath: outputPath,
+		fileAlloc:  common.ParseFileAllocation(input.Options),
+	}
+	d.mu.Unlock()
+	return item.Clone(), nil
+}
+
+func (d *Driver) Start(ctx context.Context, taskID string) error {
+	_ = ctx
+	d.mu.Lock()
+	st := d.tasks[taskID]
+	if st == nil || st.removed {
+		d.mu.Unlock()
+		return manager.ErrTaskNotFound
+	}
+	if st.running {
+		d.mu.Unlock()
+		return nil
+	}
+	runCtx, cancel := context.WithCancel(context.Background())
+	st.cancel = cancel
+	st.running = true
+	st.paused = false
+	st.task.Status = task.StatusActive
+	st.task.UpdatedAt = time.Now()
+	d.mu.Unlock()
+	go d.download(runCtx, taskID)
+	return nil
+}
+
+func (d *Driver) Pause(ctx context.Context, taskID string, force bool) error {
+	_ = ctx
+	_ = force
+	d.mu.Lock()
+	st := d.tasks[taskID]
+	if st == nil || st.removed {
+		d.mu.Unlock()
+		return manager.ErrTaskNotFound
+	}
+	st.paused = true
+	if st.cancel != nil {
+		st.cancel()
+		st.cancel = nil
+	}
+	st.running = false
+	st.task.Status = task.StatusPaused
+	st.task.UpdatedAt = time.Now()
+	d.mu.Unlock()
+	return nil
+}
+
+func (d *Driver) Remove(ctx context.Context, taskID string, force bool) error {
+	_ = ctx
+	d.mu.Lock()
+	st := d.tasks[taskID]
+	if st == nil {
+		d.mu.Unlock()
+		return manager.ErrTaskNotFound
+	}
+	st.removed = true
+	if st.cancel != nil {
+		st.cancel()
+		st.cancel = nil
+	}
+	st.running = false
+	st.task.Status = task.StatusRemoved
+	path := st.outputPath
+	d.mu.Unlock()
+	if force && path != "" {
+		_ = os.Remove(path)
+	}
+	return nil
+}
+
+func (d *Driver) PurgeLocalState(taskID string) {
+	d.mu.Lock()
+	delete(d.tasks, taskID)
+	d.mu.Unlock()
+}
+
+func (d *Driver) TellStatus(ctx context.Context, taskID string) (*task.Task, error) {
+	_ = ctx
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	st := d.tasks[taskID]
+	if st == nil {
+		return nil, manager.ErrTaskNotFound
+	}
+	return st.task.Clone(), nil
+}
+
+func (d *Driver) GetFiles(ctx context.Context, taskID string) ([]task.File, error) {
+	item, err := d.TellStatus(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	return task.CloneFiles(item.Files), nil
+}
+
+func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[string]string) error {
+	if len(opts) == 0 {
+		return nil
+	}
+	d.mu.Lock()
+	st := d.tasks[taskID]
+	if st == nil || st.removed {
+		d.mu.Unlock()
+		return manager.ErrTaskNotFound
+	}
+	if st.task.Options == nil {
+		st.task.Options = map[string]string{}
+	}
+	for k, v := range opts {
+		st.task.Options[k] = v
+	}
+	st.fileAlloc = common.ParseFileAllocation(st.task.Options)
+	shouldPause, hasPause := opts["pause"]
+	d.mu.Unlock()
+	if hasPause {
+		if strings.EqualFold(shouldPause, "true") || shouldPause == "1" {
+			return d.Pause(ctx, taskID, false)
+		}
+		return d.Start(ctx, taskID)
+	}
+	return nil
+}
+
+func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globalOptions map[string]string) error {
+	_ = ctx
+	_ = globalOptions
+	for _, saved := range tasks {
+		if saved == nil || saved.Protocol != task.Protocol("ftp") {
+			continue
+		}
+		eps := endpointsFromFiles(saved.Files)
+		if len(eps) == 0 {
+			continue
+		}
+		outputPath := saved.Meta["ftp.outputPath"]
+		if outputPath == "" && len(saved.Files) > 0 {
+			outputPath = saved.Files[0].Path
+		}
+		d.mu.Lock()
+		d.tasks[saved.ID] = &state{
+			task:       saved.Clone(),
+			endpoints:  eps,
+			outputPath: outputPath,
+			paused:     saved.Status == task.StatusPaused,
+			running:    saved.Status == task.StatusActive,
+			fileAlloc:  common.ParseFileAllocation(saved.Options),
+		}
+		d.mu.Unlock()
+		if saved.Status == task.StatusActive {
+			_ = d.Start(context.Background(), saved.ID)
+		}
+	}
+	return nil
+}
+
+func (d *Driver) download(ctx context.Context, taskID string) {
+	defer func() {
+		d.mu.Lock()
+		if st := d.tasks[taskID]; st != nil {
+			st.running = false
+			if st.cancel != nil {
+				st.cancel()
+				st.cancel = nil
+			}
+		}
+		d.mu.Unlock()
+	}()
+
+	d.mu.RLock()
+	st := d.tasks[taskID]
+	d.mu.RUnlock()
+	if st == nil {
+		return
+	}
+
+	if err := os.MkdirAll(filepath.Dir(st.outputPath), 0o755); err != nil {
+		d.fail(taskID, err)
+		return
+	}
+
+	start := st.active
+	if start < 0 || start >= len(st.endpoints) {
+		start = 0
+	}
+	var lastErr error
+	for i := start; i < len(st.endpoints); i++ {
+		d.mu.Lock()
+		if cur := d.tasks[taskID]; cur != nil {
+			cur.active = i
+		}
+		d.mu.Unlock()
+		if err := d.downloadEndpoint(ctx, taskID, st, st.endpoints[i]); err == nil {
+			d.complete(taskID)
+			return
+		} else {
+			lastErr = err
+			if ctx.Err() != nil {
+				d.pauseAfterCancel(taskID)
+				return
+			}
+		}
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("all ftp mirrors failed")
+	}
+	d.fail(taskID, lastErr)
+}
+
+func (d *Driver) downloadEndpoint(ctx context.Context, taskID string, st *state, ep endpoint) error {
+	conn, err := ftp.Dial(ep.host+":"+ep.port, ftp.DialWithTimeout(30*time.Second))
+	if err != nil {
+		return err
+	}
+	defer conn.Quit()
+
+	if ep.user != "" || ep.password != "" {
+		if err := conn.Login(ep.user, ep.password); err != nil {
+			return err
+		}
+	} else if err := conn.Login("anonymous", "guest@"); err != nil {
+		return err
+	}
+
+	resp, err := conn.Retr(ep.remote)
+	if err != nil {
+		return err
+	}
+	defer resp.Close()
+
+	file, offset, err := common.PrepareDownloadFile(st.outputPath, st.fileAlloc, 0, 0, false)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	buf := make([]byte, 32*1024)
+	written := offset
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		n, readErr := resp.Read(buf)
+		if n > 0 {
+			if _, err := file.WriteAt(buf[:n], written); err != nil {
+				return err
+			}
+			written += int64(n)
+			d.advance(taskID, written)
+			continue
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
+	return nil
+}
+
+func (d *Driver) advance(taskID string, completed int64) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	st := d.tasks[taskID]
+	if st == nil || st.removed {
+		return
+	}
+	st.task.CompletedLength = completed
+	st.task.Status = task.StatusActive
+	st.task.UpdatedAt = time.Now()
+}
+
+func (d *Driver) complete(taskID string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	st := d.tasks[taskID]
+	if st == nil {
+		return
+	}
+	st.task.Status = task.StatusComplete
+	st.task.UpdatedAt = time.Now()
+}
+
+func (d *Driver) fail(taskID string, err error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	st := d.tasks[taskID]
+	if st == nil {
+		return
+	}
+	st.task.Status = task.StatusError
+	st.task.ErrorMessage = err.Error()
+	st.task.UpdatedAt = time.Now()
+}
+
+func (d *Driver) pauseAfterCancel(taskID string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	st := d.tasks[taskID]
+	if st == nil || st.removed {
+		return
+	}
+	st.task.Status = task.StatusPaused
+	st.task.UpdatedAt = time.Now()
+}
+
+func collectEndpoints(input task.AddTaskInput) ([]endpoint, error) {
+	seen := map[string]struct{}{}
+	out := make([]endpoint, 0)
+	for _, raw := range append([]string{input.URI}, input.URIs...) {
+		ep, err := parseEndpoint(raw)
+		if err != nil {
+			continue
+		}
+		if _, ok := seen[ep.rawURL]; ok {
+			continue
+		}
+		seen[ep.rawURL] = struct{}{}
+		out = append(out, ep)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("missing ftp URL")
+	}
+	return out, nil
+}
+
+func parseEndpoint(raw string) (endpoint, error) {
+	raw = strings.TrimSpace(raw)
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return endpoint{}, err
+	}
+	if !strings.EqualFold(parsed.Scheme, "ftp") {
+		return endpoint{}, fmt.Errorf("not ftp")
+	}
+	host := parsed.Hostname()
+	port := parsed.Port()
+	if port == "" {
+		port = "21"
+	}
+	remote := strings.TrimPrefix(parsed.Path, "/")
+	if remote == "" {
+		remote = "."
+	}
+	user := parsed.User.Username()
+	password, _ := parsed.User.Password()
+	return endpoint{
+		rawURL:   raw,
+		user:     user,
+		password: password,
+		host:     host,
+		port:     port,
+		remote:   remote,
+	}, nil
+}
+
+func deriveName(ep endpoint, explicit string) string {
+	if strings.TrimSpace(explicit) != "" {
+		return explicit
+	}
+	base := filepath.Base(ep.remote)
+	if base != "" && base != "." && base != "/" {
+		return base
+	}
+	return "download"
+}
+
+func endpointURLs(eps []endpoint) []string {
+	out := make([]string, 0, len(eps))
+	for _, ep := range eps {
+		out = append(out, ep.rawURL)
+	}
+	return out
+}
+
+func endpointsFromFiles(files []task.File) []endpoint {
+	if len(files) == 0 {
+		return nil
+	}
+	out := make([]endpoint, 0, len(files[0].URIs))
+	for _, raw := range files[0].URIs {
+		if ep, err := parseEndpoint(raw); err == nil {
+			out = append(out, ep)
+		}
+	}
+	return out
+}
+
+func cloneMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return map[string]string{}
+	}
+	dst := make(map[string]string, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func newID() string {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return time.Now().Format("20060102150405.000000000")
+	}
+	return hex.EncodeToString(raw)
+}
+
+// GetServers 供 aria2.getServers 使用。
+func (d *Driver) GetServers(ctx context.Context, taskID string) ([]manager.FileServerInfo, error) {
+	_ = ctx
+	d.mu.RLock()
+	st := d.tasks[taskID]
+	d.mu.RUnlock()
+	if st == nil || st.removed {
+		return nil, manager.ErrTaskNotFound
+	}
+	entries := make([]manager.ServerEntry, 0, len(st.endpoints))
+	for i, ep := range st.endpoints {
+		speed := int64(0)
+		if i == st.active {
+			speed = st.task.DownloadSpeed
+		}
+		entries = append(entries, manager.ServerEntry{
+			URI:           ep.rawURL,
+			CurrentURI:    ep.rawURL,
+			DownloadSpeed: speed,
+		})
+	}
+	return []manager.FileServerInfo{{Index: 1, Servers: entries}}, nil
+}
+
+// Ensure net package used for Dial compatibility on exotic hosts.
+var _ = net.IPv4len
