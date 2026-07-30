@@ -23,7 +23,6 @@ var storeOnlyOptions = map[string]string{
 var startupOnlyOptions = map[string]string{
 	"listen-port":     "BT 监听端口（仅启动配置）",
 	"dht-listen-port": "DHT 监听端口（仅启动配置）",
-	"bt-max-peers":    "BT 最大 peer 数（仅启动配置）",
 	"enable-dht":      "DHT 开关（仅启动配置）",
 	"enable-dht6":     "DHT IPv6 开关（仅启动配置）",
 }

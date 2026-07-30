@@ -1056,6 +1056,28 @@ func TestCompareAria2_ChangeUri_FTP(t *testing.T) {
 	compareChangeURICounts(t, ctx, aria2, goAria, aria2GID, goGID, 1, delURIs, addURIs)
 }
 
+func TestCompareAria2_ChangeUri_SFTP(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-changeuri-sftp"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{
+		[]any{
+			"sftp://mirror1.example/changeuri.bin",
+			"sftp://mirror2.example/changeuri.bin",
+		},
+		map[string]any{"pause": "true"},
+	}
+	aria2GID := mustString(t, first(rawCall(t, ctx, aria2, goAria, "aria2.addUri", params)), "aria2 gid")
+	goGID := mustString(t, second(rawCall(t, ctx, aria2, goAria, "aria2.addUri", params)), "go gid")
+
+	delURIs := []any{"sftp://mirror2.example/changeuri.bin"}
+	addURIs := []any{"sftp://mirror3.example/changeuri.bin", "baduri"}
+	compareChangeURICounts(t, ctx, aria2, goAria, aria2GID, goGID, 1, delURIs, addURIs)
+}
+
 func TestCompareAria2_ChangeUri_BT(t *testing.T) {
 	work := t.TempDir()
 	secret := "compare-changeuri-bt"

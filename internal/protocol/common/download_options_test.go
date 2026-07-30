@@ -6,6 +6,30 @@ import (
 	"time"
 )
 
+func TestResolveBoolOption(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{
+		{"true", true},
+		{"yes", true},
+		{"1", true},
+		{"false", false},
+		{"no", false},
+		{"0", false},
+	} {
+		got := ResolveBoolOption(map[string]string{"pause": tc.value}, "pause", true)
+		if got != tc.want {
+			t.Fatalf("pause=%q: got %v want %v", tc.value, got, tc.want)
+		}
+	}
+	if ResolveBoolOption(map[string]string{"pause": "maybe"}, "pause", false) {
+		t.Fatal("unknown value should use fallback")
+	}
+}
+
 func TestDownloadFilePolicy(t *testing.T) {
 	t.Parallel()
 

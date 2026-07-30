@@ -361,7 +361,7 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 	d.mu.Unlock()
 
 	if hasPause {
-		if strings.EqualFold(shouldPause, "true") || strings.EqualFold(shouldPause, "yes") || shouldPause == "1" {
+		if common.ResolveBoolOption(map[string]string{"pause": shouldPause}, "pause", false) {
 			return d.Pause(ctx, taskID, false)
 		}
 		return d.Start(ctx, taskID)
