@@ -280,11 +280,13 @@ ed2k-upload-slots=3
 
 - `aria2.addUri`
 - `aria2.addTorrent`
+- `aria2.addMetalink`
 - `aria2.remove`
 - `aria2.forceRemove`
 - `aria2.pause`
 - `aria2.forcePause`
 - `aria2.pauseAll`
+- `aria2.forcePauseAll`
 - `aria2.unpause`
 - `aria2.unpauseAll`
 - `aria2.tellStatus`
@@ -297,20 +299,31 @@ ed2k-upload-slots=3
 - `aria2.getUris`
 - `aria2.getOption`
 - `aria2.changeOption`
+- `aria2.changePosition`
+- `aria2.changeUri`
 - `aria2.getGlobalOption`
 - `aria2.changeGlobalOption`
 - `aria2.getGlobalStat`
 - `aria2.getVersion`
 - `aria2.getSessionInfo`
 - `aria2.removeDownloadResult`
+- `aria2.purgeDownloadResult`
+- `aria2.saveSession`
+- `aria2.shutdown` / `aria2.forceShutdown`
 - `system.listMethods`
+- `system.listNotifications`
 - `system.multicall`
+- 扩展：`aria2.ping`、`native.*`（ED2K 等）
 
 兼容约定：
 
 - `gid` 使用 16 位十六进制字符串
 - `tellStatus` 中的数值字段按字符串序列化
 - 支持 `token:xxx` 形式的鉴权参数
+- 默认模式下 `system.listMethods` / `system.listNotifications` / `system.multicall` 可免 token；设置 **`rpc-strict-auth=true`** 后与 aria2 一致，所有方法均需 token
+- `addUri` 支持 `http`/`https`/`ed2k`/`magnet`；`ftp`/`sftp` 等返回 `Unsupported URI scheme`
+- 尚未实现语义的选项（如 `file-allocation`、`header`、`min-split-size`）会返回 `Option not implemented: <key>`
+- `changeUri` 当前仅 HTTP(S) 任务可用
 - WebSocket 通知端点同样遵循 `rpc-secret`，可通过 `?token=...`、`Authorization: token:...` 或 `X-Auth-Token` 传入
 
 ### 兼容性测试（对齐 aria2）
@@ -381,8 +394,10 @@ go test ./internal/compat/aria2/...
 
 ## 已知限制
 
-- 不是 aria2 的完整替代品，仍在逐步补齐兼容面。
-- 某些 aria2 边角 RPC 还未实现。
+- 不是 aria2 的完整替代品，协议与选项语义仍在逐步对齐。
+- 不支持 FTP/SFTP 等协议；`addUri` 仅接受 `http`/`https`/`ed2k`/`magnet`。
+- 部分 aria2 选项仅校验格式、尚未在驱动层实现（见 `docs/ARIA2-JSON-RPC.zh-CN.md` 选项矩阵）。
+- `changeUri` 当前仅 HTTP(S) 任务可用。
 - BT 严格恢复依赖 torrent 元数据可用。
 - ED2K 的完整恢复能力仍在扩展中。
 

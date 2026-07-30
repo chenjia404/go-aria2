@@ -27,6 +27,8 @@
 - 若进程 **已** 配置 `rpc-secret`：  
   - `params` **第一个元素** 必须为字符串 `token:<与配置一致的密钥>`；  
   - 其后元素才是方法参数。
+- **默认行为（go-aria2 扩展）：** `system.listMethods`、`system.listNotifications`、`system.multicall` 可在无 token 时调用，便于探测与批量封装。
+- **严格模式：** 配置 `rpc-strict-auth=true`（或 `--rpc-strict-auth`）后，与 aria2 一致，**所有** RPC 方法（含 `system.*`）均需 token。
 
 示例（已配置 secret 时）：
 
@@ -76,7 +78,19 @@
 
 在 `addUri`、`addTorrent`、`changeOption`、`changeGlobalOption` 等中，选项为 **JSON 对象**，键为字符串；实现侧会将值 **`fmt` 转为字符串** 存入内部选项表。
 
-常见键（与配置/aria2 命名兼容，未列出的键可能被接受但部分尚未实现语义）包括：`dir`、`pause`、`max-concurrent-downloads`、`http-user-agent`、`http-referer`、`bt-tracker`、`bt-exclude-tracker`、**`select-file`**（BT：逗号分隔的 1-based 索引与闭区间 `a-b`，与 aria2 一致；可在 `addUri`/`addTorrent` 与 `changeOption` 中使用；空或未设置表示下载全部文件）等。具体以 `internal/app/daemon.go` 中 `buildGlobalOptions` 与驱动实现为准。
+常见键（与配置/aria2 命名兼容）包括：`dir`、`pause`、`max-concurrent-downloads`、`http-user-agent`、`http-referer`、`bt-tracker`、`bt-exclude-tracker`、**`select-file`**（BT：逗号分隔的 1-based 索引与闭区间 `a-b`）等。`referer` / `user-agent` 会分别映射为 `http-referer` / `http-user-agent`。
+
+**选项实现矩阵（第九轮起）：**
+
+| 选项 | 状态 |
+|------|------|
+| `dir`、`pause`、`out`、`max-download-limit`、`http-user-agent`、`http-referer`、`bt-tracker`、`select-file`、`split` 等 | 已实现语义 |
+| `file-allocation`、`header`、`min-split-size`、`index-out`、`piece-length` | **未实现**：返回 `Option not implemented: <key>` |
+| 其他未列出键 | 可能被接受并存储，但不保证驱动层生效 |
+
+`addUri` 支持的 scheme：`http`、`https`、`ed2k`、`magnet`。`ftp`/`sftp` 等返回 `Unsupported URI scheme`（`-32602`）。
+
+`changeUri` 当前仅 HTTP(S) 下载可用；BT/ED2K 返回 `changeUri is not supported for this download`。
 
 ---
 
