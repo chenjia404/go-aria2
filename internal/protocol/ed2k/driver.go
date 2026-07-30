@@ -15,6 +15,7 @@ import (
 
 	"github.com/chenjia404/go-aria2/internal/core/manager"
 	"github.com/chenjia404/go-aria2/internal/core/task"
+	"github.com/chenjia404/go-aria2/internal/protocol/common"
 )
 
 // Options 控制 ED2K 驱动底层 goed2k Client 的初始化�?
@@ -275,7 +276,7 @@ func (d *Driver) GetPeers(ctx context.Context, taskID string) ([]manager.PeerInf
 // ChangeOption 支持 pause 选项的动态切换�?
 func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[string]string) error {
 	if shouldPause, ok := opts["pause"]; ok {
-		if strings.EqualFold(shouldPause, "true") || strings.EqualFold(shouldPause, "yes") || shouldPause == "1" {
+		if common.ResolveBoolOption(map[string]string{"pause": shouldPause}, "pause", false) {
 			return d.Pause(ctx, taskID, false)
 		}
 		return d.Start(ctx, taskID)

@@ -19,7 +19,7 @@ func TestDriverRespectsMaxDownloadLimit_SFTP(t *testing.T) {
 	defer srv.close()
 
 	saveDir := t.TempDir()
-	driver := New()
+	driver := New(Options{})
 	created, err := driver.Add(context.Background(), task.AddTaskInput{
 		URI:     srv.uri(),
 		SaveDir: saveDir,
@@ -50,7 +50,7 @@ func TestDriverChangeOptionUpdatesDownloadLimit_SFTP(t *testing.T) {
 	defer srv.close()
 
 	saveDir := t.TempDir()
-	driver := New()
+	driver := New(Options{})
 	created, err := driver.Add(context.Background(), task.AddTaskInput{
 		URI:     srv.uri(),
 		SaveDir: saveDir,

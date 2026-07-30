@@ -50,7 +50,7 @@ func TestDriverResumesPartialDownload_SFTP(t *testing.T) {
 		t.Fatalf("write partial: %v", err)
 	}
 
-	driver := New()
+	driver := New(Options{})
 	created, err := driver.Add(context.Background(), task.AddTaskInput{
 		URI:     srv.uri(),
 		SaveDir: saveDir,
@@ -88,7 +88,7 @@ func TestDriverRestartsWhenContinueFalse_SFTP(t *testing.T) {
 		t.Fatalf("write partial: %v", err)
 	}
 
-	driver := New()
+	driver := New(Options{})
 	created, err := driver.Add(context.Background(), task.AddTaskInput{
 		URI:     srv.uri(),
 		SaveDir: saveDir,
@@ -121,7 +121,7 @@ func TestDriverAdvanceSyncsFileProgress_SFTP(t *testing.T) {
 	defer srv.close()
 
 	saveDir := t.TempDir()
-	driver := New()
+	driver := New(Options{})
 	created, err := driver.Add(context.Background(), task.AddTaskInput{
 		URI:     srv.uri(),
 		SaveDir: saveDir,
