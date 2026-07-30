@@ -71,6 +71,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 		return nil, err
 	}
 	name := deriveName(eps[0], input.Name)
+	name = common.ResolveIndexOutName(input.Options, 1, name)
 	outputPath := filepath.Join(input.SaveDir, name)
 
 	item := &task.Task{
@@ -322,17 +323,31 @@ func (d *Driver) downloadEndpoint(ctx context.Context, taskID string, st *state,
 		return err
 	}
 
-	resp, err := conn.Retr(ep.remote)
+	total, err := conn.FileSize(ep.remote)
 	if err != nil {
-		return err
+		total = 0
 	}
-	defer resp.Close()
-
-	file, offset, err := common.PrepareDownloadFile(st.outputPath, st.fileAlloc, 0, 0, false)
+	localSize := int64(0)
+	if info, statErr := os.Stat(st.outputPath); statErr == nil {
+		localSize = info.Size()
+	}
+	resumePartial := localSize > 0 && (total <= 0 || localSize < total)
+	file, offset, err := common.PrepareDownloadFile(st.outputPath, st.fileAlloc, localSize, total, resumePartial)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
+
+	var resp *ftp.Response
+	if offset > 0 {
+		resp, err = conn.RetrFrom(ep.remote, uint64(offset))
+	} else {
+		resp, err = conn.Retr(ep.remote)
+	}
+	if err != nil {
+		return err
+	}
+	defer resp.Close()
 
 	buf := make([]byte, 32*1024)
 	written := offset
@@ -348,7 +363,7 @@ func (d *Driver) downloadEndpoint(ctx context.Context, taskID string, st *state,
 				return err
 			}
 			written += int64(n)
-			d.advance(taskID, written)
+			d.advance(taskID, written, total)
 			continue
 		}
 		if readErr == io.EOF {
@@ -361,7 +376,7 @@ func (d *Driver) downloadEndpoint(ctx context.Context, taskID string, st *state,
 	return nil
 }
 
-func (d *Driver) advance(taskID string, completed int64) {
+func (d *Driver) advance(taskID string, completed, total int64) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	st := d.tasks[taskID]
@@ -369,6 +384,13 @@ func (d *Driver) advance(taskID string, completed int64) {
 		return
 	}
 	st.task.CompletedLength = completed
+	if total > 0 {
+		st.task.TotalLength = total
+		if len(st.task.Files) > 0 {
+			st.task.Files[0].Length = total
+			st.task.Files[0].CompletedLength = completed
+		}
+	}
 	st.task.Status = task.StatusActive
 	st.task.UpdatedAt = time.Now()
 }

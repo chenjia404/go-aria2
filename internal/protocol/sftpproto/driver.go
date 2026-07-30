@@ -72,6 +72,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 		return nil, err
 	}
 	name := deriveName(eps[0], input.Name)
+	name = common.ResolveIndexOutName(input.Options, 1, name)
 	outputPath := filepath.Join(input.SaveDir, name)
 
 	item := &task.Task{
@@ -343,12 +344,21 @@ func (d *Driver) downloadEndpoint(ctx context.Context, taskID string, st *state,
 		return err
 	}
 	total := info.Size()
-
-	file, offset, err := common.PrepareDownloadFile(st.outputPath, st.fileAlloc, 0, total, false)
+	localSize := int64(0)
+	if localInfo, statErr := os.Stat(st.outputPath); statErr == nil {
+		localSize = localInfo.Size()
+	}
+	resumePartial := localSize > 0 && localSize < total
+	file, offset, err := common.PrepareDownloadFile(st.outputPath, st.fileAlloc, localSize, total, resumePartial)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
+	if offset > 0 {
+		if _, err := remoteFile.Seek(offset, io.SeekStart); err != nil {
+			return err
+		}
+	}
 
 	buf := make([]byte, 32*1024)
 	written := offset

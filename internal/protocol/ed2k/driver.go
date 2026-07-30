@@ -36,7 +36,7 @@ type state struct {
 	started bool
 	paused  bool
 	removed bool
-	uri     string
+	uris    []string
 }
 
 // Driver 使用 goed2k 作为 ED2K 协议实现�?
@@ -109,10 +109,11 @@ func (d *Driver) CanHandle(input task.AddTaskInput) bool {
 func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, error) {
 	_ = ctx
 
-	link, err := firstLink(input)
+	allLinks, err := collectLinks(input)
 	if err != nil {
 		return nil, err
 	}
+	link := allLinks[0]
 	handle, targetPath, err := d.client.AddLink(link.SourceURI, input.SaveDir)
 	if err != nil {
 		return nil, err
@@ -127,6 +128,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 	if input.Name != "" {
 		name = input.Name
 	}
+	uris := linkURIs(allLinks)
 	item := &task.Task{
 		ID:             newID(),
 		Protocol:       task.ProtocolED2K,
@@ -141,7 +143,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 			Length:          link.Size,
 			CompletedLength: 0,
 			Selected:        true,
-			URIs:            []string{link.SourceURI},
+			URIs:            uris,
 		}},
 		Options: cloneMap(input.Options),
 		Meta:    cloneED2KMeta(input.Meta, link),
@@ -153,7 +155,10 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 		started: false,
 		paused:  false,
 		removed: false,
-		uri:     link.SourceURI,
+		uris:    uris,
+	}
+	for _, extra := range allLinks[1:] {
+		d.connectLinkSources(extra)
 	}
 	d.mu.Unlock()
 	return d.snapshot(task.StatusWaiting, item.ID)
@@ -326,7 +331,7 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 			hash:    hash,
 			started: saved.Status == task.StatusActive,
 			paused:  saved.Status == task.StatusPaused,
-			uri:     saved.Meta["ed2k.sourceURI"],
+			uris:    urisFromSession(saved),
 		}
 		d.mu.Lock()
 		d.tasks[saved.ID] = st
@@ -360,7 +365,7 @@ func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, 
 
 	if state.removed {
 		item.Status = task.StatusRemoved
-		item.Meta = map[string]string{"ed2k.sourceURI": state.uri}
+		item.Meta = map[string]string{"ed2k.sourceURI": primaryURI(state.uris)}
 		return item, nil
 	}
 
@@ -385,13 +390,14 @@ func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, 
 		Length:          snapshot.Size,
 		CompletedLength: snapshot.Status.TotalDone,
 		Selected:        true,
-		URIs:            []string{state.uri},
+		URIs:            append([]string(nil), state.uris...),
 	}}
+	primary := primaryURI(state.uris)
 	item.Meta = map[string]string{
 		"ed2k.hash":      snapshot.Hash.String(),
-		"ed2k.sourceURI": state.uri,
+		"ed2k.sourceURI": primary,
 	}
-	aich, sources := parseLinkExtras(state.uri)
+	aich, sources := parseLinkExtras(primary)
 	if aich != "" {
 		item.Meta["ed2k.aich"] = aich
 	}

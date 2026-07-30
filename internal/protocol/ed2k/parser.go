@@ -79,13 +79,65 @@ func toTaskFile(item *link) task.File {
 }
 
 func firstLink(input task.AddTaskInput) (*link, error) {
+	links, err := collectLinks(input)
+	if err != nil {
+		return nil, err
+	}
+	return links[0], nil
+}
+
+func collectLinks(input task.AddTaskInput) ([]*link, error) {
+	seen := map[string]struct{}{}
+	out := make([]*link, 0)
 	for _, raw := range append([]string{input.URI}, input.URIs...) {
-		if strings.TrimSpace(raw) == "" {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
 			continue
 		}
-		return parseLink(raw)
+		if _, ok := seen[raw]; ok {
+			continue
+		}
+		link, err := parseLink(raw)
+		if err != nil {
+			return nil, err
+		}
+		seen[raw] = struct{}{}
+		out = append(out, link)
 	}
-	return nil, fmt.Errorf("missing ed2k URI")
+	if len(out) == 0 {
+		return nil, fmt.Errorf("missing ed2k URI")
+	}
+	return out, nil
+}
+
+func linkURIs(links []*link) []string {
+	out := make([]string, 0, len(links))
+	for _, l := range links {
+		if l != nil && l.SourceURI != "" {
+			out = append(out, l.SourceURI)
+		}
+	}
+	return out
+}
+
+func primaryURI(uris []string) string {
+	if len(uris) == 0 {
+		return ""
+	}
+	return uris[0]
+}
+
+func urisFromSession(saved *task.Task) []string {
+	if saved == nil {
+		return nil
+	}
+	if len(saved.Files) > 0 && len(saved.Files[0].URIs) > 0 {
+		return append([]string(nil), saved.Files[0].URIs...)
+	}
+	if saved.Meta != nil && saved.Meta["ed2k.sourceURI"] != "" {
+		return []string{saved.Meta["ed2k.sourceURI"]}
+	}
+	return nil
 }
 
 func cloneED2KMeta(base map[string]string, link *link) map[string]string {

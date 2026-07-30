@@ -322,8 +322,8 @@ ed2k-upload-slots=3
 - 支持 `token:xxx` 形式的鉴权参数
 - 默认模式下 `system.listMethods` / `system.listNotifications` / `system.multicall` 可免 token；设置 **`rpc-strict-auth=true`** 后与 aria2 一致，所有方法均需 token
 - `addUri` 支持 `http`/`https`/`ftp`/`sftp`/`ed2k`/`magnet`；其他 scheme 返回 `Unsupported URI scheme`
-- `file-allocation`（`none`/`trunc`/`prealloc`/`falloc`）、`header`、`min-split-size`、`piece-length`、`index-out` 已在 HTTP/FTP/SFTP/BT 驱动落地
-- `changeUri` 支持 HTTP(S)、BT（web seed）、FTP、SFTP 任务
+- `file-allocation`（`none`/`trunc`/`prealloc`/`falloc`）、`index-out` 已在 HTTP/FTP/SFTP/BT 驱动落地；`header`、`min-split-size`、`piece-length` 仅 HTTP 驱动
+- `changeUri` 支持 HTTP(S)、BT（web seed）、FTP、SFTP、ED2K 任务
 - WebSocket 通知端点同样遵循 `rpc-secret`，可通过 `?token=...`、`Authorization: token:...` 或 `X-Auth-Token` 传入
 
 ### 兼容性测试（对齐 aria2）
@@ -377,7 +377,14 @@ go test ./internal/compat/aria2/...
 
 - 支持 `ed2k://` 链接
 - 已接入真实驱动层
+- 支持 `changeUri` 增删镜像链接（hash 须匹配）
 - 迁移时会保留任务元数据，后续可继续扩展恢复逻辑
+
+### FTP / SFTP
+
+- 支持 `ftp://`、`sftp://` 单文件下载
+- 支持 `file-allocation`、`index-out`、镜像 `changeUri`
+- FTP 支持 SIZE/REST 断点续传；SFTP 支持本地部分文件续传
 
 ### HTTP / HTTPS
 

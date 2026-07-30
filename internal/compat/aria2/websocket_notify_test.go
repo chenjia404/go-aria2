@@ -2,6 +2,7 @@ package aria2
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +15,26 @@ import (
 )
 
 // 验证 WebSocket 能收到与 aria2 一致的任务生命周期通知。
+
+// readWSUntil 在超时前持续读取 WebSocket 消息，直到 match 返回 true。
+// gorilla/websocket 在 ReadJSON 失败后不可重复读取同一连接，因此不能在超时后 continue 重试。
+func readWSUntil(t *testing.T, conn *websocket.Conn, timeout time.Duration, match func(msg map[string]any) bool) {
+	t.Helper()
+	_ = conn.SetReadDeadline(time.Now().Add(timeout))
+	for {
+		var msg map[string]any
+		err := conn.ReadJSON(&msg)
+		if err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				t.Fatal("websocket notification not received before timeout")
+			}
+			t.Fatalf("websocket read: %v", err)
+		}
+		if match(msg) {
+			return
+		}
+	}
+}
 
 func TestWebSocketNotification_OnDownloadPause(t *testing.T) {
 	t.Parallel()
@@ -55,23 +76,17 @@ func TestWebSocketNotification_OnDownloadPause(t *testing.T) {
 		t.Fatalf("pause: %v", err)
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
-		var msg map[string]any
-		if err := conn.ReadJSON(&msg); err != nil {
-			continue
+	readWSUntil(t, conn, 2*time.Second, func(msg map[string]any) bool {
+		if msg["method"] != "aria2.onDownloadPause" {
+			return false
 		}
-		if msg["method"] == "aria2.onDownloadPause" {
-			params, _ := msg["params"].([]any)
-			if len(params) == 1 {
-				if ev, ok := params[0].(map[string]any); ok && ev["gid"] == gidStr {
-					return
-				}
-			}
+		params, _ := msg["params"].([]any)
+		if len(params) != 1 {
+			return false
 		}
-	}
-	t.Fatal("expected aria2.onDownloadPause notification")
+		ev, ok := params[0].(map[string]any)
+		return ok && ev["gid"] == gidStr
+	})
 }
 
 func TestWebSocketNotification_AddPausedSkipsStart(t *testing.T) {
@@ -157,23 +172,17 @@ func TestWebSocketNotification_OnDownloadStart(t *testing.T) {
 		t.Fatalf("unpause: %v", err)
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
-		var msg map[string]any
-		if err := conn.ReadJSON(&msg); err != nil {
-			continue
+	readWSUntil(t, conn, 2*time.Second, func(msg map[string]any) bool {
+		if msg["method"] != "aria2.onDownloadStart" {
+			return false
 		}
-		if msg["method"] == "aria2.onDownloadStart" {
-			params, _ := msg["params"].([]any)
-			if len(params) == 1 {
-				if ev, ok := params[0].(map[string]any); ok && ev["gid"] == gidStr {
-					return
-				}
-			}
+		params, _ := msg["params"].([]any)
+		if len(params) != 1 {
+			return false
 		}
-	}
-	t.Fatal("expected aria2.onDownloadStart notification")
+		ev, ok := params[0].(map[string]any)
+		return ok && ev["gid"] == gidStr
+	})
 }
 
 func TestWebSocketNotification_OnDownloadStop(t *testing.T) {
@@ -216,21 +225,15 @@ func TestWebSocketNotification_OnDownloadStop(t *testing.T) {
 		t.Fatalf("remove: %v", err)
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
-		var msg map[string]any
-		if err := conn.ReadJSON(&msg); err != nil {
-			continue
+	readWSUntil(t, conn, 2*time.Second, func(msg map[string]any) bool {
+		if msg["method"] != "aria2.onDownloadStop" {
+			return false
 		}
-		if msg["method"] == "aria2.onDownloadStop" {
-			params, _ := msg["params"].([]any)
-			if len(params) == 1 {
-				if ev, ok := params[0].(map[string]any); ok && ev["gid"] == gidStr {
-					return
-				}
-			}
+		params, _ := msg["params"].([]any)
+		if len(params) != 1 {
+			return false
 		}
-	}
-	t.Fatal("expected aria2.onDownloadStop notification")
+		ev, ok := params[0].(map[string]any)
+		return ok && ev["gid"] == gidStr
+	})
 }

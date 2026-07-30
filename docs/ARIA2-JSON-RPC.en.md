@@ -85,12 +85,13 @@ Common keys include: `dir`, `pause`, `max-concurrent-downloads`, `http-user-agen
 | Option | Status |
 |--------|--------|
 | `dir`, `pause`, `out`, `max-download-limit`, `http-user-agent`, `split`, `select-file`, … | Implemented |
-| `file-allocation`, `header`, `min-split-size`, `piece-length`, `index-out` | **Implemented** in HTTP/FTP/SFTP/BT drivers (aria2 manual semantics) |
+| `file-allocation`, `index-out` | **Implemented** in HTTP/FTP/SFTP/BT drivers |
+| `header`, `min-split-size`, `piece-length` | **Implemented** in HTTP driver |
 | Other keys | May be stored without driver semantics |
 
 `addUri` schemes: `http`, `https`, `ftp`, `sftp`, `ed2k`, `magnet`. Other schemes return `Unsupported URI scheme` (`-32602`).
 
-`changeUri` supports HTTP(S), BT web seeds, FTP, and SFTP; ED2K still returns `changeUri is not supported for this download`.
+`changeUri` supports HTTP(S), BT web seeds, FTP, SFTP, and ED2K.
 
 ---
 

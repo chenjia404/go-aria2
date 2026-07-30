@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -986,6 +987,33 @@ func uriListFromGetUris(item map[string]any) []string {
 	return out
 }
 
+func TestGoAria2_GetVersionProtocols(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-version-protos"
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	ver := decodeJSON[map[string]any](t, mustCall(t, ctx, goAria, "aria2.getVersion"), "getVersion")
+	enabled, ok := ver["enabledProtocols"].([]any)
+	if !ok {
+		t.Fatalf("enabledProtocols: %#v", ver["enabledProtocols"])
+	}
+	for _, proto := range []string{"ftp", "sftp"} {
+		if !containsAny(enabled, proto) {
+			t.Fatalf("enabledProtocols missing %q: %#v", proto, enabled)
+		}
+	}
+}
+
+func containsAny(items []any, target string) bool {
+	for _, item := range items {
+		if s, ok := item.(string); ok && s == target {
+			return true
+		}
+	}
+	return false
+}
+
 func contains(items []string, target string) bool {
 	for _, item := range items {
 		if item == target {
@@ -1044,12 +1072,14 @@ func TestGoAria2_WebSocketAuthAndNotify(t *testing.T) {
 		t.Fatalf("unpause: %v", err)
 	}
 
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
 		var msg map[string]any
 		if err := conn.ReadJSON(&msg); err != nil {
-			continue
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				t.Fatal("expected aria2.onDownloadStart over websocket")
+			}
+			t.Fatalf("websocket read: %v", err)
 		}
 		if msg["method"] == "aria2.onDownloadStart" {
 			params, _ := msg["params"].([]any)
@@ -1060,5 +1090,4 @@ func TestGoAria2_WebSocketAuthAndNotify(t *testing.T) {
 			}
 		}
 	}
-	t.Fatal("expected aria2.onDownloadStart over websocket")
 }

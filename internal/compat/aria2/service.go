@@ -728,7 +728,7 @@ func (s *Service) getVersion() map[string]any {
 		"releaseDate":        releaseDate,
 		"organization":       "github.com/chenjia404/go-aria2",
 		"copyright":          "github.com/chenjia404/go-aria2 contributors",
-		"enabledProtocols":   []string{"bt", "ed2k", "http", "https"},
+		"enabledProtocols":   []string{"bt", "ed2k", "ftp", "http", "https", "sftp"},
 		"supportedProtocols": []string{"bt", "ed2k", "ftp", "http", "https", "sftp"},
 	}
 }

@@ -228,6 +228,36 @@ func (d *rpcStubDriver) ChangeURI(ctx context.Context, taskID string, fileIndex 
 	return delCount, addCount, nil
 }
 
+func TestService_GetVersionEnabledProtocols(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(manager.New(manager.Options{}), "")
+	raw, err := service.Invoke(context.Background(), "aria2.getVersion", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, ok := raw.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected version payload: %#v", raw)
+	}
+	enabled, ok := version["enabledProtocols"].([]string)
+	if !ok {
+		t.Fatalf("enabledProtocols: %#v", version["enabledProtocols"])
+	}
+	for _, proto := range []string{"ftp", "sftp"} {
+		found := false
+		for _, item := range enabled {
+			if item == proto {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("enabledProtocols missing %q: %#v", proto, enabled)
+		}
+	}
+}
+
 func TestServiceExposesVersionAndSessionMethods(t *testing.T) {
 	t.Parallel()
 
