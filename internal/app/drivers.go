@@ -66,8 +66,12 @@ func registerProtocolDrivers(mgr *manager.Manager, cfg *config.Config, paths run
 		out.ED2K = ed2kDriver
 	}
 
-	mgr.RegisterDriver(ftp.New())
-	mgr.RegisterDriver(sftpproto.New())
+	mgr.RegisterDriver(ftp.New(ftp.Options{
+		MaxOverallDownloadLimit: cfg.MaxOverallDownloadLimit,
+	}))
+	mgr.RegisterDriver(sftpproto.New(sftpproto.Options{
+		MaxOverallDownloadLimit: cfg.MaxOverallDownloadLimit,
+	}))
 	mgr.RegisterDriver(httpdl.New(httpdl.Options{
 		UserAgent:               cfg.HTTPUserAgent,
 		Referer:                 cfg.HTTPReferer,

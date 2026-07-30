@@ -10,7 +10,7 @@ import (
 func TestAdd_IndexOut(t *testing.T) {
 	t.Parallel()
 
-	driver := New()
+	driver := New(Options{})
 	item, err := driver.Add(context.Background(), task.AddTaskInput{
 		URI:     "sftp://user:pass@host.example/remote/original.bin",
 		SaveDir: t.TempDir(),

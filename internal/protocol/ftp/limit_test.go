@@ -26,7 +26,7 @@ func TestDriverRespectsMaxDownloadLimit_FTP(t *testing.T) {
 	uri := "ftp://" + host + ":" + port + "/" + mock.remote
 
 	saveDir := t.TempDir()
-	driver := New()
+	driver := New(Options{})
 	created, err := driver.Add(context.Background(), task.AddTaskInput{
 		URI:     uri,
 		SaveDir: saveDir,

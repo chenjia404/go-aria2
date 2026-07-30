@@ -24,6 +24,9 @@ func NewTaskDownloadLimiter(opts map[string]string, base *ByteLimiter) *ByteLimi
 			if parsed <= 0 {
 				return nil
 			}
+			if base != nil {
+				return base
+			}
 			return NewByteLimiter(parsed)
 		}
 	}

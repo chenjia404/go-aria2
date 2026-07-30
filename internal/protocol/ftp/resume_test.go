@@ -212,7 +212,7 @@ func TestDriverResumesPartialDownload_FTP(t *testing.T) {
 		t.Fatalf("write partial: %v", err)
 	}
 
-	driver := New()
+	driver := New(Options{})
 	created, err := driver.Add(context.Background(), task.AddTaskInput{
 		URI:     uri,
 		SaveDir: saveDir,
@@ -259,7 +259,7 @@ func TestDriverRestartsWhenContinueFalse_FTP(t *testing.T) {
 		t.Fatalf("write partial: %v", err)
 	}
 
-	driver := New()
+	driver := New(Options{})
 	created, err := driver.Add(context.Background(), task.AddTaskInput{
 		URI:     uri,
 		SaveDir: saveDir,
@@ -383,7 +383,7 @@ func TestDriverResumeWhenFileSizeUnavailable_FTP(t *testing.T) {
 		t.Fatalf("write partial: %v", err)
 	}
 
-	driver := New()
+	driver := New(Options{})
 	created, err := driver.Add(context.Background(), task.AddTaskInput{
 		URI:     uri,
 		SaveDir: saveDir,

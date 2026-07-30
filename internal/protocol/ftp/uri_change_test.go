@@ -10,7 +10,7 @@ import (
 func TestChangeURI_FTPMirrors(t *testing.T) {
 	t.Parallel()
 
-	driver := New()
+	driver := New(Options{})
 	item, err := driver.Add(context.Background(), task.AddTaskInput{
 		URI:     "ftp://mirror1.example/file.bin",
 		URIs:    []string{"ftp://mirror2.example/file.bin"},
@@ -48,7 +48,7 @@ func TestChangeURI_FTPMirrors(t *testing.T) {
 func TestAdd_IndexOut(t *testing.T) {
 	t.Parallel()
 
-	driver := New()
+	driver := New(Options{})
 	item, err := driver.Add(context.Background(), task.AddTaskInput{
 		URI:     "ftp://mirror.example/original.bin",
 		SaveDir: t.TempDir(),
