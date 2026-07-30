@@ -85,8 +85,11 @@ Common keys include: `dir`, `pause`, `max-concurrent-downloads`, `http-user-agen
 | Option | Status |
 |--------|--------|
 | `dir`, `pause`, `out`, `max-download-limit`, `http-user-agent`, `split`, `select-file`, … | Implemented |
-| `file-allocation`, `index-out` | **Implemented** in HTTP/FTP/SFTP/BT drivers |
+| `file-allocation`, `index-out` | **Implemented** in HTTP/FTP/SFTP/BT (`changeOption` with `index-out` updates output paths) |
 | `header`, `min-split-size`, `piece-length` | **Implemented** in HTTP driver |
+| `connect-timeout`, `timeout` | **Implemented** in HTTP (`DialContext` / `Client.Timeout`); `connect-timeout` also used for FTP/SFTP |
+| `continue`, `allow-overwrite` | **Implemented** in HTTP/FTP/SFTP |
+| `seed-ratio`, `seed-time` | **Implemented** for BT seeding (per-task overrides global) |
 | Other keys | May be stored without driver semantics |
 
 `addUri` schemes: `http`, `https`, `ftp`, `sftp`, `ed2k`, `magnet`. Other schemes return `Unsupported URI scheme` (`-32602`).

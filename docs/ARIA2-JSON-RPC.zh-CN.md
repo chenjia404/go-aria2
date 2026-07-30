@@ -85,8 +85,11 @@
 | 选项 | 状态 |
 |------|------|
 | `dir`、`pause`、`out`、`max-download-limit`、`http-user-agent`、`http-referer`、`bt-tracker`、`select-file`、`split` 等 | 已实现语义 |
-| `file-allocation`、`index-out` | **已实现**：HTTP/FTP/SFTP/BT 驱动 |
+| `file-allocation`、`index-out` | **已实现**：HTTP/FTP/SFTP/BT 驱动（`changeOption` 更新 `index-out` 时同步输出路径） |
 | `header`、`min-split-size`、`piece-length` | **已实现**：HTTP 驱动 |
+| `connect-timeout`、`timeout` | **已实现**：HTTP 驱动（`DialContext` / `Client.Timeout`）；`connect-timeout` 亦用于 FTP/SFTP 连接 |
+| `continue`、`allow-overwrite` | **已实现**：HTTP/FTP/SFTP |
+| `seed-ratio`、`seed-time` | **已实现**：BT 做种策略（任务级选项覆盖全局） |
 | 其他未列出键 | 可能被接受并存储，但不保证驱动层生效 |
 
 `addUri` 支持的 scheme：`http`、`https`、`ftp`、`sftp`、`ed2k`、`magnet`。其他 scheme 返回 `Unsupported URI scheme`（`-32602`）。

@@ -213,6 +213,9 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 		st.task.Options[k] = v
 	}
 	st.fileAlloc = common.ParseFileAllocation(st.task.Options)
+	if _, ok := opts["index-out"]; ok {
+		applySFTPIndexOut(st)
+	}
 	shouldPause, hasPause := opts["pause"]
 	d.mu.Unlock()
 	if hasPause {
@@ -281,6 +284,18 @@ func (d *Driver) download(ctx context.Context, taskID string) {
 		return
 	}
 
+	localSize := int64(0)
+	if info, err := os.Stat(st.outputPath); err == nil {
+		localSize = info.Size()
+	}
+	if common.ShouldRejectExistingFile(st.task.Options, localSize) {
+		d.fail(taskID, fmt.Errorf("target file already exists and allow-overwrite=false: %s", st.outputPath))
+		return
+	}
+	if common.ShouldResetExistingFile(st.task.Options, localSize) {
+		_ = os.Remove(st.outputPath)
+	}
+
 	start := st.active
 	if start < 0 || start >= len(st.endpoints) {
 		start = 0
@@ -318,7 +333,7 @@ func (d *Driver) downloadEndpoint(ctx context.Context, taskID string, st *state,
 		User:            user,
 		Auth:            []ssh.AuthMethod{ssh.Password(ep.password)},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(), //nolint:gosec // aria2 兼容：默认不校验主机密钥
-		Timeout:         30 * time.Second,
+		Timeout:         sftpConnectTimeout(st.task.Options),
 	}
 	addr := net.JoinHostPort(ep.host, ep.port)
 	client, err := ssh.Dial("tcp", addr, config)
@@ -348,7 +363,7 @@ func (d *Driver) downloadEndpoint(ctx context.Context, taskID string, st *state,
 	if localInfo, statErr := os.Stat(st.outputPath); statErr == nil {
 		localSize = localInfo.Size()
 	}
-	resumePartial := localSize > 0 && localSize < total
+	resumePartial := common.ShouldResumePartial(st.task.Options, localSize, total)
 	file, offset, err := common.PrepareDownloadFile(st.outputPath, st.fileAlloc, localSize, total, resumePartial)
 	if err != nil {
 		return err
@@ -559,4 +574,28 @@ func (d *Driver) GetServers(ctx context.Context, taskID string) ([]manager.FileS
 		})
 	}
 	return []manager.FileServerInfo{{Index: 1, Servers: entries}}, nil
+}
+
+func sftpConnectTimeout(opts map[string]string) time.Duration {
+	if d := common.ParseTimeoutSeconds(opts, "connect-timeout"); d > 0 {
+		return d
+	}
+	return 30 * time.Second
+}
+
+func applySFTPIndexOut(st *state) {
+	if st == nil || st.task == nil {
+		return
+	}
+	name := common.ResolveIndexOutName(st.task.Options, 1, st.task.Name)
+	newPath := filepath.Join(st.task.SaveDir, name)
+	st.outputPath = newPath
+	st.task.Name = name
+	if len(st.task.Files) > 0 {
+		st.task.Files[0].Path = newPath
+	}
+	if st.task.Meta == nil {
+		st.task.Meta = map[string]string{}
+	}
+	st.task.Meta["sftp.outputPath"] = newPath
 }

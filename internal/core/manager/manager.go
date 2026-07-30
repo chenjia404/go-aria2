@@ -430,16 +430,11 @@ func (m *Manager) PurgeDownloadResult(ctx context.Context) error {
 }
 
 func (m *Manager) EnforceSeedLimits(ctx context.Context) error {
-	ratio, ratioSet := parseSeedRatioOption(m.globalOptions["seed-ratio"])
-	seedTime := parseSeedTimeOption(m.globalOptions["seed-time"])
-	if !ratioSet && seedTime <= 0 {
-		return nil
-	}
-
 	m.mu.RLock()
 	jobs := make([]struct {
 		taskID string
 		driver Driver
+		opts   map[string]string
 	}, 0)
 	for taskID, item := range m.tasks {
 		if item == nil || item.Protocol != task.ProtocolBT {
@@ -448,11 +443,21 @@ func (m *Manager) EnforceSeedLimits(ctx context.Context) error {
 		jobs = append(jobs, struct {
 			taskID string
 			driver Driver
-		}{taskID: taskID, driver: m.driverByTaskID[taskID]})
+			opts   map[string]string
+		}{
+			taskID: taskID,
+			driver: m.driverByTaskID[taskID],
+			opts:   mergeOptions(m.globalOptions, item.LocalOptions),
+		})
 	}
 	m.mu.RUnlock()
 
 	for _, job := range jobs {
+		ratio, ratioSet := parseSeedRatioOption(job.opts["seed-ratio"])
+		seedTime := parseSeedTimeOption(job.opts["seed-time"])
+		if !ratioSet && seedTime <= 0 {
+			continue
+		}
 		enforcer, ok := job.driver.(SeedPolicyEnforcer)
 		if !ok {
 			continue

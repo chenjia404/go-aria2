@@ -90,8 +90,9 @@ func runDaemon(args []string) error {
 	}
 
 	service := aria2.NewServiceWithConfig(mgr, aria2.ServiceConfig{
-		RPCSecret:  cfg.RPCSecret,
-		StrictAuth: cfg.RPCStrictAuth,
+		RPCSecret:   cfg.RPCSecret,
+		StrictAuth:  cfg.RPCStrictAuth,
+		ED2KEnabled: cfg.ED2KEnable,
 	})
 	service.SetSessionPath(runtimePaths.sessionPath)
 	shutdownReq := make(chan bool, 1)

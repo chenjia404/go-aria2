@@ -256,6 +256,46 @@ func TestService_GetVersionEnabledProtocols(t *testing.T) {
 			t.Fatalf("enabledProtocols missing %q: %#v", proto, enabled)
 		}
 	}
+	for _, item := range enabled {
+		if item == "ed2k" {
+			t.Fatalf("ed2k should not be enabled by default: %#v", enabled)
+		}
+	}
+}
+
+func TestService_GetVersionWithED2KEnabled(t *testing.T) {
+	t.Parallel()
+
+	service := NewServiceWithConfig(manager.New(manager.Options{}), ServiceConfig{ED2KEnabled: true})
+	raw, err := service.Invoke(context.Background(), "aria2.getVersion", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, ok := raw.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected version payload: %#v", raw)
+	}
+	enabled, ok := version["enabledProtocols"].([]string)
+	if !ok {
+		t.Fatal("enabledProtocols missing")
+	}
+	found := false
+	for _, item := range enabled {
+		if item == "ed2k" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected ed2k in enabledProtocols: %#v", enabled)
+	}
+	supported, ok := version["supportedProtocols"].([]string)
+	if !ok {
+		t.Fatal("supportedProtocols missing")
+	}
+	if len(supported) <= len(enabled) {
+		t.Fatalf("supportedProtocols should be superset: enabled=%#v supported=%#v", enabled, supported)
+	}
 }
 
 func TestServiceExposesVersionAndSessionMethods(t *testing.T) {
