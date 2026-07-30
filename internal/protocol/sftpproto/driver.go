@@ -316,6 +316,12 @@ func (d *Driver) download(ctx context.Context, taskID string) {
 				d.pauseAfterCancel(taskID)
 				return
 			}
+			if i+1 < len(st.endpoints) {
+				if waitErr := common.SleepBetweenMirrors(ctx, st.task.Options); waitErr != nil {
+					d.pauseAfterCancel(taskID)
+					return
+				}
+			}
 		}
 	}
 	if lastErr == nil {

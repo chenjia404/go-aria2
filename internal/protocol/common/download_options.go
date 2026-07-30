@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -57,6 +58,20 @@ func ShouldResumePartial(opts map[string]string, existingSize, total int64) bool
 		return false
 	}
 	return true
+}
+
+// SleepBetweenMirrors 在切换镜像 URI 前等待 retry-wait 秒（aria2 语义）。
+func SleepBetweenMirrors(ctx context.Context, opts map[string]string) error {
+	wait := ParseTimeoutSeconds(opts, "retry-wait")
+	if wait <= 0 {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(wait):
+		return nil
+	}
 }
 
 // ParseTimeoutSeconds 从选项中解析秒级超时（connect-timeout、timeout 等）。

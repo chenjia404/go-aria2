@@ -91,6 +91,16 @@ func parseChecksumSpec(raw string) (checksumSpec, error) {
 	return checksumSpec{Algorithm: algo, Value: value}, nil
 }
 
+// ValidateChecksumOption 校验 aria2 checksum 选项格式（algo=digest）。
+func ValidateChecksumOption(raw string) error {
+	spec, err := parseChecksumSpec(raw)
+	if err != nil {
+		return err
+	}
+	_, err = newChecksumHash(spec.Algorithm)
+	return err
+}
+
 func checksumRaw(item *task.Task) string {
 	if raw := strings.TrimSpace(item.Meta["aria2.checksum"]); raw != "" {
 		return raw

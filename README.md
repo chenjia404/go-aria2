@@ -325,6 +325,8 @@ Conventions:
 - `file-allocation` (`none`/`trunc`/`prealloc`/`falloc`) and `index-out` in HTTP/FTP/SFTP/BT drivers; `changeOption` with `index-out` updates output paths
 - `connect-timeout` and `timeout` in the HTTP driver; `connect-timeout` also used for FTP/SFTP connections
 - `continue` and `allow-overwrite` in HTTP/FTP/SFTP drivers
+- `retry-wait` waits before HTTP/FTP/SFTP mirror failover
+- `checksum` validated on add/change; verified after HTTP download completes
 - `seed-ratio` and `seed-time` support per-task overrides for BT seeding
 - `getVersion.enabledProtocols` reflects `ed2k-enable`; `supportedProtocols` includes `magnet`
 - `changeUri` supports HTTP(S), BT (web seeds), FTP, SFTP, and ED2K downloads
