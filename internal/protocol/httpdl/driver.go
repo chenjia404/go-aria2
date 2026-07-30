@@ -36,15 +36,17 @@ type Options struct {
 }
 
 type state struct {
-	task         *task.Task
-	sourceURL    string
-	sourceURLs   []string
-	sourceIndex  int
-	outputPath   string
-	client       *http.Client
-	userAgent    string
-	referer      string
-	limiter      *byteLimiter
+	task          *task.Task
+	sourceURL     string
+	sourceURLs    []string
+	sourceIndex   int
+	outputPath    string
+	client        *http.Client
+	userAgent     string
+	referer       string
+	customHeaders map[string]string
+	fileAlloc     common.FileAllocationMode
+	limiter       *byteLimiter
 	progressBase int64
 	progressDone int64
 	cancel       context.CancelFunc
@@ -131,15 +133,17 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 
 	d.mu.Lock()
 	d.tasks[item.ID] = &state{
-		task:       item.Clone(),
-		sourceURL:  sourceURL,
-		sourceURLs: append([]string(nil), sourceURLs...),
-		outputPath: outputPath,
-		client:     buildTaskClient(d.defaults, input.Options),
-		userAgent:  resolveStringOption(input.Options, "http-user-agent", defaultUserAgent(d.defaults)),
-		referer:    resolveStringOption(input.Options, "http-referer", d.defaults.Referer),
-		limiter:    buildTaskLimiter(d.limiter, d.defaults, input.Options),
-		lastTick:   time.Now(),
+		task:          item.Clone(),
+		sourceURL:     sourceURL,
+		sourceURLs:    append([]string(nil), sourceURLs...),
+		outputPath:    outputPath,
+		client:        buildTaskClient(d.defaults, input.Options),
+		userAgent:     resolveStringOption(input.Options, "http-user-agent", defaultUserAgent(d.defaults)),
+		referer:       resolveStringOption(input.Options, "http-referer", d.defaults.Referer),
+		customHeaders: resolveCustomHeaders(input.Options),
+		fileAlloc:     common.ParseFileAllocation(input.Options),
+		limiter:       buildTaskLimiter(d.limiter, d.defaults, input.Options),
+		lastTick:      time.Now(),
 	}
 	d.mu.Unlock()
 	return item.Clone(), nil
@@ -345,6 +349,8 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 	st.client = buildTaskClient(d.defaults, st.task.Options)
 	st.userAgent = resolveStringOption(st.task.Options, "http-user-agent", defaultUserAgent(d.defaults))
 	st.referer = resolveStringOption(st.task.Options, "http-referer", d.defaults.Referer)
+	st.customHeaders = resolveCustomHeaders(st.task.Options)
+	st.fileAlloc = common.ParseFileAllocation(st.task.Options)
 	st.limiter = buildTaskLimiter(d.limiter, d.defaults, st.task.Options)
 	shouldPause, hasPause := opts["pause"]
 	d.mu.Unlock()
@@ -385,14 +391,16 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 		}
 
 		st := &state{
-			task:       saved.Clone(),
-			sourceURL:  sourceURL,
-			sourceURLs: sourceURLs,
-			outputPath: outputPath,
-			client:     buildTaskClient(d.defaults, saved.Options),
-			userAgent:  resolveStringOption(saved.Options, "http-user-agent", defaultUserAgent(d.defaults)),
-			referer:    resolveStringOption(saved.Options, "http-referer", d.defaults.Referer),
-			limiter:    buildTaskLimiter(d.limiter, d.defaults, saved.Options),
+			task:          saved.Clone(),
+			sourceURL:     sourceURL,
+			sourceURLs:    sourceURLs,
+			outputPath:    outputPath,
+			client:        buildTaskClient(d.defaults, saved.Options),
+			userAgent:     resolveStringOption(saved.Options, "http-user-agent", defaultUserAgent(d.defaults)),
+			referer:       resolveStringOption(saved.Options, "http-referer", d.defaults.Referer),
+			customHeaders: resolveCustomHeaders(saved.Options),
+			fileAlloc:     common.ParseFileAllocation(saved.Options),
+			limiter:       buildTaskLimiter(d.limiter, d.defaults, saved.Options),
 			paused:     saved.Status == task.StatusPaused,
 			running:    saved.Status == task.StatusActive,
 			lastTick:   time.Now(),
@@ -517,10 +525,7 @@ func (d *Driver) downloadSingleFromURL(ctx context.Context, taskID string, st *s
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", st.userAgent)
-	if st.referer != "" {
-		req.Header.Set("Referer", st.referer)
-	}
+	st.setRequestHeaders(req)
 	if existingSize > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", existingSize))
 	}
@@ -532,10 +537,8 @@ func (d *Driver) downloadSingleFromURL(ctx context.Context, taskID string, st *s
 	defer resp.Body.Close()
 
 	offset := existingSize
-	mode := os.O_CREATE | os.O_RDWR
-	if resp.StatusCode == http.StatusPartialContent && existingSize > 0 {
-	} else {
-		mode |= os.O_TRUNC
+	resumePartial := resp.StatusCode == http.StatusPartialContent && existingSize > 0
+	if !resumePartial {
 		offset = 0
 	}
 
@@ -543,19 +546,30 @@ func (d *Driver) downloadSingleFromURL(ctx context.Context, taskID string, st *s
 		return fmt.Errorf("http status %s", resp.Status)
 	}
 
-	file, err := os.OpenFile(st.outputPath, mode, 0o644)
+	if total <= 0 {
+		total = totalLengthFromResponse(resp, offset)
+	}
+
+	allocMode := st.fileAlloc
+	if allocMode == common.FileAllocationNone && !resumePartial {
+		allocMode = common.FileAllocationNone
+	}
+	file, openedOffset, err := common.PrepareDownloadFile(st.outputPath, allocMode, existingSize, total, resumePartial)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-
-	if total <= 0 {
-		total = totalLengthFromResponse(resp, offset)
+	offset = openedOffset
+	if resumePartial {
+		offset = existingSize
 	}
-	if total > 0 {
+
+	if total > 0 && allocMode == common.FileAllocationNone {
 		if err := file.Truncate(total); err != nil {
 			return err
 		}
+	}
+	if total > 0 {
 		d.setTaskTotal(taskID, total)
 	}
 	d.prepareProgress(taskID, offset)
@@ -602,14 +616,15 @@ func (d *Driver) downloadChunked(ctx context.Context, taskID string, st *state, 
 		startOffset = 0
 	}
 
-	file, err := os.OpenFile(st.outputPath, os.O_CREATE|os.O_RDWR, 0o644)
+	file, _, err := common.PrepareDownloadFile(st.outputPath, st.fileAlloc, existingSize, total, existingSize > 0)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-
-	if err := file.Truncate(total); err != nil {
-		return err
+	if st.fileAlloc == common.FileAllocationNone {
+		if err := file.Truncate(total); err != nil {
+			return err
+		}
 	}
 	d.setTaskTotal(taskID, total)
 	d.prepareProgress(taskID, startOffset)
@@ -691,10 +706,7 @@ func (d *Driver) downloadRangeFromURL(ctx context.Context, st *state, file *os.F
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", st.userAgent)
-	if st.referer != "" {
-		req.Header.Set("Referer", st.referer)
-	}
+	st.setRequestHeaders(req)
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
 
 	resp, err := st.client.Do(req)
@@ -770,10 +782,7 @@ func (d *Driver) probeResource(ctx context.Context, st *state) (int64, bool, err
 func (d *Driver) probeURL(ctx context.Context, st *state, url string) (int64, bool, error) {
 	headReq, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
 	if err == nil {
-		headReq.Header.Set("User-Agent", st.userAgent)
-		if st.referer != "" {
-			headReq.Header.Set("Referer", st.referer)
-		}
+		st.setRequestHeaders(headReq)
 		if resp, err := st.client.Do(headReq); err == nil {
 			total := totalLengthFromHead(resp)
 			acceptRanges := supportsRanges(resp)
@@ -788,10 +797,7 @@ func (d *Driver) probeURL(ctx context.Context, st *state, url string) (int64, bo
 	if err != nil {
 		return 0, false, err
 	}
-	getReq.Header.Set("User-Agent", st.userAgent)
-	if st.referer != "" {
-		getReq.Header.Set("Referer", st.referer)
-	}
+	st.setRequestHeaders(getReq)
 	getReq.Header.Set("Range", "bytes=0-0")
 
 	resp, err := st.client.Do(getReq)
@@ -1083,6 +1089,30 @@ func defaultUserAgent(opts Options) string {
 		return opts.UserAgent
 	}
 	return "github.com/chenjia404/go-aria2/0.1"
+}
+
+func (st *state) setRequestHeaders(req *http.Request) {
+	if st == nil || req == nil {
+		return
+	}
+	if st.userAgent != "" {
+		req.Header.Set("User-Agent", st.userAgent)
+	}
+	if st.referer != "" {
+		req.Header.Set("Referer", st.referer)
+	}
+	common.ApplyCustomHeaders(req, st.customHeaders)
+}
+
+func resolveCustomHeaders(opts map[string]string) map[string]string {
+	if opts == nil {
+		return nil
+	}
+	raw, ok := opts["header"]
+	if !ok {
+		return nil
+	}
+	return common.ParseHeaderOption(raw)
 }
 
 func resolveStringOption(opts map[string]string, key, fallback string) string {
