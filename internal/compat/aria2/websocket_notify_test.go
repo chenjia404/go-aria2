@@ -18,10 +18,18 @@ import (
 
 // readWSUntil 在超时前持续读取 WebSocket 消息，直到 match 返回 true。
 // gorilla/websocket 在 ReadJSON 失败后不可重复读取同一连接，因此不能在超时后 continue 重试。
+// 每收到一条非匹配消息会刷新读超时，避免先到的 onDownloadStart 等通知耗尽总等待时间。
 func readWSUntil(t *testing.T, conn *websocket.Conn, timeout time.Duration, match func(msg map[string]any) bool) {
 	t.Helper()
-	_ = conn.SetReadDeadline(time.Now().Add(timeout))
+	deadline := time.Now().Add(timeout)
 	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			t.Fatal("websocket notification not received before timeout")
+		}
+		if err := conn.SetReadDeadline(time.Now().Add(remaining)); err != nil {
+			t.Fatalf("set read deadline: %v", err)
+		}
 		var msg map[string]any
 		err := conn.ReadJSON(&msg)
 		if err != nil {
@@ -65,18 +73,25 @@ func TestWebSocketNotification_OnDownloadPause(t *testing.T) {
 
 	gid, err := svc.Invoke(context.Background(), "aria2.addUri", []any{
 		[]any{"http://example.com/ws-notify"},
-		map[string]any{},
+		map[string]any{"pause": "true"},
 	})
 	if err != nil {
 		t.Fatalf("addUri: %v", err)
 	}
 	gidStr, _ := gid.(string)
 
+	if _, err := svc.Invoke(context.Background(), "aria2.unpause", []any{gidStr}); err != nil {
+		t.Fatalf("unpause: %v", err)
+	}
+	readWSUntil(t, conn, 5*time.Second, func(msg map[string]any) bool {
+		return msg["method"] == "aria2.onDownloadStart"
+	})
+
 	if _, err := svc.Invoke(context.Background(), "aria2.pause", []any{gidStr}); err != nil {
 		t.Fatalf("pause: %v", err)
 	}
 
-	readWSUntil(t, conn, 2*time.Second, func(msg map[string]any) bool {
+	readWSUntil(t, conn, 5*time.Second, func(msg map[string]any) bool {
 		if msg["method"] != "aria2.onDownloadPause" {
 			return false
 		}
@@ -172,7 +187,7 @@ func TestWebSocketNotification_OnDownloadStart(t *testing.T) {
 		t.Fatalf("unpause: %v", err)
 	}
 
-	readWSUntil(t, conn, 2*time.Second, func(msg map[string]any) bool {
+	readWSUntil(t, conn, 5*time.Second, func(msg map[string]any) bool {
 		if msg["method"] != "aria2.onDownloadStart" {
 			return false
 		}
@@ -225,7 +240,7 @@ func TestWebSocketNotification_OnDownloadStop(t *testing.T) {
 		t.Fatalf("remove: %v", err)
 	}
 
-	readWSUntil(t, conn, 2*time.Second, func(msg map[string]any) bool {
+	readWSUntil(t, conn, 5*time.Second, func(msg map[string]any) bool {
 		if msg["method"] != "aria2.onDownloadStop" {
 			return false
 		}
