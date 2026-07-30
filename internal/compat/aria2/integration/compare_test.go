@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -1071,12 +1072,14 @@ func TestGoAria2_WebSocketAuthAndNotify(t *testing.T) {
 		t.Fatalf("unpause: %v", err)
 	}
 
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
 		var msg map[string]any
 		if err := conn.ReadJSON(&msg); err != nil {
-			continue
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				t.Fatal("expected aria2.onDownloadStart over websocket")
+			}
+			t.Fatalf("websocket read: %v", err)
 		}
 		if msg["method"] == "aria2.onDownloadStart" {
 			params, _ := msg["params"].([]any)
@@ -1087,5 +1090,4 @@ func TestGoAria2_WebSocketAuthAndNotify(t *testing.T) {
 			}
 		}
 	}
-	t.Fatal("expected aria2.onDownloadStart over websocket")
 }
