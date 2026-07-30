@@ -101,7 +101,7 @@ listen-port=16881
 	}
 }
 
-func writeGoAria2DaemonConf(t *testing.T, path string, port int, secret, downloadDir, dataDir, sessionPath string) {
+func writeGoAria2DaemonConf(t *testing.T, path string, port int, secret, downloadDir, dataDir, sessionPath string, extraLines ...string) {
 	t.Helper()
 	body := fmt.Sprintf(`enable-rpc=true
 rpc-listen-port=%d
@@ -117,6 +117,9 @@ listen-port=0
 enable-dht=false
 ed2k-enable=false
 `, port, secret, filepath.ToSlash(downloadDir), filepath.ToSlash(dataDir), filepath.ToSlash(sessionPath))
+	if len(extraLines) > 0 {
+		body += strings.Join(extraLines, "\n") + "\n"
+	}
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -158,6 +161,10 @@ func startAria2Daemon(t *testing.T, workDir string, port int, secret string) *da
 }
 
 func startGoAria2Daemon(t *testing.T, workDir string, port int, secret string) *daemonHandle {
+	return startGoAria2DaemonWithExtra(t, workDir, port, secret)
+}
+
+func startGoAria2DaemonWithExtra(t *testing.T, workDir string, port int, secret string, extraLines ...string) *daemonHandle {
 	t.Helper()
 	root := findModuleRoot(t)
 	downloadDir := filepath.Join(workDir, "downloads")
@@ -170,7 +177,7 @@ func startGoAria2Daemon(t *testing.T, workDir string, port int, secret string) *
 	}
 	conf := filepath.Join(workDir, "go-aria2.conf")
 	session := filepath.Join(dataDir, "session.json")
-	writeGoAria2DaemonConf(t, conf, port, secret, downloadDir, dataDir, session)
+	writeGoAria2DaemonConf(t, conf, port, secret, downloadDir, dataDir, session, extraLines...)
 
 	cmd := exec.Command("go", "run", ".", "daemon", "-conf", conf)
 	cmd.Dir = filepath.Join(root, "cmd", "go-aria2")
@@ -248,6 +255,14 @@ func stopDaemon(d *daemonHandle) {
 }
 
 func (d *daemonHandle) call(ctx context.Context, method string, params []any) (json.RawMessage, error) {
+	return d.callRPC(ctx, method, params, true)
+}
+
+func (d *daemonHandle) callUnauthenticated(ctx context.Context, method string, params []any) (json.RawMessage, error) {
+	return d.callRPC(ctx, method, params, false)
+}
+
+func (d *daemonHandle) callRPC(ctx context.Context, method string, params []any, injectToken bool) (json.RawMessage, error) {
 	reqBody := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      method,
@@ -256,7 +271,7 @@ func (d *daemonHandle) call(ctx context.Context, method string, params []any) (j
 	if params == nil {
 		params = []any{}
 	}
-	if d.secret != "" && method != "system.multicall" {
+	if injectToken && d.secret != "" && method != "system.multicall" {
 		params = append([]any{"token:" + d.secret}, params...)
 	}
 	reqBody["params"] = params

@@ -6,8 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -720,6 +722,139 @@ func TestCompareAria2_GetServersActiveDownload(t *testing.T) {
 	forceRemoveDownloads(t, ctx, goAria, goGID)
 }
 
+func TestCompareAria2_ChangeUri_HTTP(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-changeuri"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{
+		[]any{
+			"http://example.com/changeuri-1.bin",
+			"http://example.com/changeuri-2.bin",
+		},
+		map[string]any{"pause": "true"},
+	}
+	aria2GID := mustString(t, first(rawCall(t, ctx, aria2, goAria, "aria2.addUri", params)), "aria2 gid")
+	goGID := mustString(t, second(rawCall(t, ctx, aria2, goAria, "aria2.addUri", params)), "go gid")
+
+	delURIs := []any{"http://example.com/changeuri-2.bin"}
+	addURIs := []any{"http://example.com/changeuri-added.bin", "baduri"}
+	compareChangeURICounts(t, ctx, aria2, goAria, aria2GID, goGID, 1, delURIs, addURIs)
+
+	aria2URIs := decodeJSON[[]map[string]any](t, mustCall(t, ctx, aria2, "aria2.getUris", aria2GID), "aria2 getUris")
+	goURIs := decodeJSON[[]map[string]any](t, mustCall(t, ctx, goAria, "aria2.getUris", goGID), "go getUris")
+	if len(aria2URIs) == 0 || len(goURIs) == 0 {
+		t.Fatalf("getUris empty: aria2=%#v go=%#v", aria2URIs, goURIs)
+	}
+	aria2List := uriListFromGetUris(aria2URIs[0])
+	goList := uriListFromGetUris(goURIs[0])
+	if len(aria2List) != len(goList) {
+		t.Fatalf("uri count mismatch: aria2=%#v go=%#v", aria2List, goList)
+	}
+	for i := range aria2List {
+		if aria2List[i] != goList[i] {
+			t.Fatalf("uri[%d] mismatch: aria2=%q go=%q", i, aria2List[i], goList[i])
+		}
+	}
+}
+
+func TestCompareAria2_SaveSession(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-savesession"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/savesession.bin"}, map[string]any{"pause": "true"}}
+	mustCallSlice(t, ctx, aria2, "aria2.addUri", params)
+	mustCallSlice(t, ctx, goAria, "aria2.addUri", params)
+
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.saveSession"), d.name+" saveSession"); got != "OK" {
+			t.Fatalf("%s saveSession returned %q", d.name, got)
+		}
+	}
+}
+
+func TestGoAria2_UnsupportedURIScheme(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-unsupported-uri"
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	if _, err := goAria.call(ctx, "aria2.addUri", []any{[]any{"ftp://example.com/a.bin"}}); err == nil {
+		t.Fatal("go-aria2 should reject ftp URI")
+	} else if !strings.Contains(err.Error(), "Unsupported URI scheme") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestGoAria2_StrictAuthRequiresToken(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-strict-auth"
+	goAria := startGoAria2DaemonWithExtra(t, work, freeListenPort(t), secret, "rpc-strict-auth=true")
+	ctx := context.Background()
+
+	if _, err := goAria.callUnauthenticated(ctx, "system.listMethods", nil); err == nil {
+		t.Fatal("strict auth should reject listMethods without token")
+	}
+	if raw, err := goAria.callUnauthenticated(ctx, "system.listMethods", []any{"token:" + secret}); err != nil {
+		t.Fatalf("listMethods with token: %v", err)
+	} else if raw == nil {
+		t.Fatal("listMethods with token should succeed")
+	}
+}
+
+func TestGoAria2_UnimplementedOptionRejected(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-unimpl-opt"
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	if _, err := goAria.call(ctx, "aria2.addUri", []any{
+		[]any{"http://example.com/a.bin"},
+		map[string]any{"pause": "true", "file-allocation": "none"},
+	}); err == nil {
+		t.Fatal("file-allocation should be rejected")
+	} else if !strings.Contains(err.Error(), "Option not implemented") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestGoAria2_XMLRPCGetVersion(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-xmlrpc"
+	port := freeListenPort(t)
+	goAria := startGoAria2Daemon(t, work, port, secret)
+	ctx := context.Background()
+
+	// JSON-RPC 冒烟确认 daemon 正常。
+	_ = mustCall(t, ctx, goAria, "aria2.getVersion", "token:"+secret)
+
+	body := fmt.Sprintf(`<?xml version="1.0"?><methodCall>
+<methodName>aria2.getVersion</methodName>
+<params><param><value><string>token:%s</string></value></param></params>
+</methodCall>`, secret)
+	resp, err := http.Post(goAria.baseURL+"/xmlrpc", "text/xml", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("xmlrpc status: %d", resp.StatusCode)
+	}
+	payload, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(payload)
+	if !strings.Contains(text, "<methodResponse>") || !strings.Contains(text, "version") {
+		t.Fatalf("unexpected xmlrpc response: %s", text)
+	}
+}
+
 func TestCompareAria2_ForceRemove(t *testing.T) {
 	work := t.TempDir()
 	secret := "compare-forceremove"
@@ -791,6 +926,43 @@ func compareIntResult(t *testing.T, ctx context.Context, aria2, goAria *daemonHa
 	if int(aVal) != int(gVal) {
 		t.Fatalf("%s position mismatch: aria2=%d go=%d", method, int(aVal), int(gVal))
 	}
+}
+
+func compareChangeURICounts(t *testing.T, ctx context.Context, aria2, goAria *daemonHandle, aria2GID, goGID string, fileIndex int, delURIs, addURIs []any, extra ...any) {
+	t.Helper()
+	aParams := append([]any{aria2GID, fileIndex, delURIs, addURIs}, extra...)
+	gParams := append([]any{goGID, fileIndex, delURIs, addURIs}, extra...)
+	aRaw := mustCall(t, ctx, aria2, "aria2.changeUri", aParams...)
+	gRaw := mustCall(t, ctx, goAria, "aria2.changeUri", gParams...)
+
+	var aPair, gPair []float64
+	if err := json.Unmarshal(aRaw, &aPair); err != nil || len(aPair) != 2 {
+		t.Fatalf("aria2 changeUri result: %s (%v)", string(aRaw), err)
+	}
+	if err := json.Unmarshal(gRaw, &gPair); err != nil || len(gPair) != 2 {
+		t.Fatalf("go-aria2 changeUri result: %s (%v)", string(gRaw), err)
+	}
+	if int(aPair[0]) != int(gPair[0]) || int(aPair[1]) != int(gPair[1]) {
+		t.Fatalf("changeUri counts mismatch: aria2=[%d,%d] go=[%d,%d]", int(aPair[0]), int(aPair[1]), int(gPair[0]), int(gPair[1]))
+	}
+}
+
+func uriListFromGetUris(item map[string]any) []string {
+	raw, ok := item["uris"].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, entry := range raw {
+		m, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		if uri, ok := m["uri"].(string); ok {
+			out = append(out, uri)
+		}
+	}
+	return out
 }
 
 func contains(items []string, target string) bool {
