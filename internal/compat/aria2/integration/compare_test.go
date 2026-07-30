@@ -1098,6 +1098,30 @@ func TestCompareAria2_ChangeUri_BT(t *testing.T) {
 	compareChangeURICounts(t, ctx, aria2, goAria, aria2GID, goGID, 1, delURIs, addURIs)
 }
 
+func TestCompareAria2_ChangeGlobalOption_MaxOverallDownloadLimit(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-changeglobal-dl"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := map[string]any{"max-overall-download-limit": "100K"}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		mustCall(t, ctx, d, "aria2.changeGlobalOption", params)
+	}
+
+	aria2Global := decodeJSON[map[string]string](t, mustCall(t, ctx, aria2, "aria2.getGlobalOption", nil), "aria2 getGlobalOption")
+	goGlobal := decodeJSON[map[string]string](t, mustCall(t, ctx, goAria, "aria2.getGlobalOption", nil), "go getGlobalOption")
+	if aria2Global["max-overall-download-limit"] != goGlobal["max-overall-download-limit"] {
+		t.Fatalf("getGlobalOption mismatch: aria2=%#v go=%#v",
+			aria2Global["max-overall-download-limit"], goGlobal["max-overall-download-limit"])
+	}
+	if goGlobal["max-overall-download-limit"] != "102400" {
+		t.Fatalf("expected normalized 102400, got aria2=%#v go=%#v",
+			aria2Global["max-overall-download-limit"], goGlobal["max-overall-download-limit"])
+	}
+}
+
 func TestGoAria2_WebSocketAuthAndNotify(t *testing.T) {
 	work := t.TempDir()
 	secret := "compare-ws-auth"
