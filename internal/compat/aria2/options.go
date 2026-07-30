@@ -52,6 +52,11 @@ func validateAddOptions(opts map[string]string) error {
 		if err := validateKnownOption(key, value); err != nil {
 			return err
 		}
+		if key == "index-out" {
+			if _, err := ParseIndexOut(value); err != nil {
+				return jsonrpc.NewError(jsonrpc.CodeInvalidParams, err.Error())
+			}
+		}
 		opts[key] = normalizeOptionValue(key, value)
 	}
 	return rejectUnimplementedOptions(opts)
@@ -127,9 +132,13 @@ func validateKnownOption(key, value string) error {
 		if !isBoolOption(value) {
 			return optionError(key, value)
 		}
-	case "split", "max-connection-per-server", "min-split-size", "max-concurrent-downloads",
+	case "split", "max-connection-per-server", "max-concurrent-downloads",
 		"listen-port", "dht-listen-port", "bt-max-peers":
 		if _, err := parsePositiveInt(value); err != nil {
+			return optionError(key, value)
+		}
+	case "min-split-size", "piece-length":
+		if _, err := parseSpeedLimit(value); err != nil {
 			return optionError(key, value)
 		}
 	case "seed-ratio":
@@ -148,6 +157,10 @@ func normalizeOptionValue(key, value string) string {
 	switch key {
 	case "max-download-limit", "max-upload-limit", "max-overall-download-limit", "max-overall-upload-limit",
 		"bt-request-peer-speed-limit":
+		if parsed, err := parseSpeedLimit(value); err == nil {
+			return strconv.FormatInt(parsed, 10)
+		}
+	case "min-split-size", "piece-length":
 		if parsed, err := parseSpeedLimit(value); err == nil {
 			return strconv.FormatInt(parsed, 10)
 		}

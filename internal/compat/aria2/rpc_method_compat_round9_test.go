@@ -13,6 +13,9 @@ func TestAcceptImplementedOptions(t *testing.T) {
 	if err := validateAddOptions(map[string]string{
 		"file-allocation": "none",
 		"header":          "X-Test: 1",
+		"min-split-size":  "1M",
+		"piece-length":    "512K",
+		"index-out":       "1=custom.bin",
 		"pause":           "true",
 	}); err != nil {
 		t.Fatalf("implemented options should be accepted: %v", err)
@@ -22,20 +25,9 @@ func TestAcceptImplementedOptions(t *testing.T) {
 func TestRejectUnimplementedOptions(t *testing.T) {
 	t.Parallel()
 
-	cases := map[string]string{
-		"min-split-size": "16",
-		"index-out":      "out.bin",
-		"piece-length":   "16",
-	}
-	for key, value := range cases {
-		err := validateAddOptions(map[string]string{key: value, "pause": "true"})
-		if err == nil {
-			t.Fatalf("expected unimplemented error for %s", key)
-		}
-		rpcErr, ok := err.(*jsonrpc.RPCError)
-		if !ok || rpcErr.Code != jsonrpc.CodeInvalidParams {
-			t.Fatalf("%s: unexpected error %#v", key, err)
-		}
+	// 当前无未实现选项；保留用例结构以便后续扩展。
+	if len(unimplementedOptions) > 0 {
+		t.Fatalf("unexpected unimplemented options: %#v", unimplementedOptions)
 	}
 }
 

@@ -85,8 +85,7 @@ Common keys include: `dir`, `pause`, `max-concurrent-downloads`, `http-user-agen
 | Option | Status |
 |--------|--------|
 | `dir`, `pause`, `out`, `max-download-limit`, `http-user-agent`, `split`, `select-file`, … | Implemented |
-| `file-allocation`, `header` | **Implemented** in HTTP/FTP/SFTP drivers (`file-allocation`: `none`/`trunc`/`prealloc`/`falloc`; `header` as multiline `Name: value`) |
-| `min-split-size`, `index-out`, `piece-length` | **Not implemented** — returns `Option not implemented: <key>` |
+| `file-allocation`, `header`, `min-split-size`, `piece-length`, `index-out` | **Implemented** in HTTP/FTP/SFTP/BT drivers (aria2 manual semantics) |
 | Other keys | May be stored without driver semantics |
 
 `addUri` schemes: `http`, `https`, `ftp`, `sftp`, `ed2k`, `magnet`. Other schemes return `Unsupported URI scheme` (`-32602`).

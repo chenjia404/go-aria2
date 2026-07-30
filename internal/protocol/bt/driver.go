@@ -17,7 +17,6 @@ import (
 
 	"github.com/RoaringBitmap/roaring"
 	torrentlib "github.com/anacrolix/torrent"
-	"github.com/anacrolix/torrent/storage"
 	"golang.org/x/time/rate"
 
 	"github.com/chenjia404/go-aria2/internal/core/manager"
@@ -256,7 +255,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 	}
 	applyBTTrackerOpts(result.Spec, &result.Source, input.Options)
 
-	result.Spec.AddTorrentOpts.Storage = storage.NewFile(input.SaveDir)
+	result.Spec.AddTorrentOpts.Storage = torrentStorageForAdd(input.SaveDir, input.Options)
 	result.Spec.AddTorrentOpts.DisallowDataDownload = true
 	result.Spec.AddTorrentOpts.DisallowDataUpload = true
 
@@ -553,7 +552,7 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 		}
 		effOpts := effectiveOptsForSessionRestore(saved, globalOptions)
 		applyBTTrackerOpts(result.Spec, &result.Source, effOpts)
-		result.Spec.AddTorrentOpts.Storage = storage.NewFile(saved.SaveDir)
+		result.Spec.AddTorrentOpts.Storage = torrentStorageForAdd(saved.SaveDir, effOpts)
 		result.Spec.AddTorrentOpts.DisallowDataDownload = true
 		result.Spec.AddTorrentOpts.DisallowDataUpload = true
 
@@ -695,6 +694,7 @@ func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, 
 		item.TotalLength = state.torrent.Length()
 		item.PieceLength = int64(info.PieceLength)
 		item.Files = torrentFiles(state.torrent)
+		applyIndexOutPaths(item.Files, state.options, state.saveDir)
 		item.Name = chooseName("", state.source.DisplayName, state.torrent.Name())
 		item.InfoHash = state.torrent.InfoHash().HexString()
 		item.Meta = enrichMetaFromTorrent(item.Meta, state.torrent)

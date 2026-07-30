@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/chenjia404/go-aria2/internal/core/task"
+	"github.com/chenjia404/go-aria2/internal/protocol/common"
 	"github.com/chenjia404/go-aria2/internal/protocol/metalink"
 	"github.com/chenjia404/go-aria2/internal/rpc/jsonrpc"
 )
@@ -51,10 +52,10 @@ func parseAddMetalinkParams(params []any) (payload []byte, options map[string]st
 
 func metalinkFilesToAddInputs(files []metalink.File, options map[string]string) ([]task.AddTaskInput, error) {
 	out := make([]task.AddTaskInput, 0, len(files))
-	for _, file := range files {
+	for i, file := range files {
 		input := task.AddTaskInput{
 			URIs:    append([]string(nil), file.URLs...),
-			Name:    file.Name,
+			Name:    common.ResolveIndexOutName(options, i+1, file.Name),
 			Options: cloneOptionMap(options),
 			Meta: map[string]string{
 				"aria2.metalink": "true",

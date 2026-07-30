@@ -103,6 +103,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 	}
 	sourceURL := sourceURLs[0]
 	name := deriveName(sourceURL, input.Name)
+	name = common.ResolveIndexOutName(input.Options, 1, name)
 	outputPath := outputPathFor(input.SaveDir, name)
 	if shouldAutoRenameOnAdd(input.Options, outputPath) {
 		renamedPath, renamedName, err := nextAvailablePath(outputPath)
@@ -464,7 +465,7 @@ func (d *Driver) download(ctx context.Context, taskID string) {
 		return
 	}
 
-	segmentCount := d.segmentCount(st)
+	segmentCount := d.segmentCount(st, total, existingSize)
 	if total > 0 && acceptRanges && segmentCount > 1 {
 		if err := d.downloadChunked(ctx, taskID, st, existingSize, total, segmentCount); err != nil {
 			if ctx.Err() != nil {
@@ -628,15 +629,23 @@ func (d *Driver) downloadChunked(ctx context.Context, taskID string, st *state, 
 	}
 	d.setTaskTotal(taskID, total)
 	d.prepareProgress(taskID, startOffset)
-	d.update(taskID, func(item *task.Task) {
-		item.Connections = segments
-	})
 
-	ranges := splitRanges(startOffset, total, segments)
+	ranges := d.buildDownloadRanges(st, startOffset, total, segments)
 	if len(ranges) == 0 {
 		d.setCompleted(taskID, total)
 		return nil
 	}
+
+	concurrency := segments
+	if concurrency > len(ranges) {
+		concurrency = len(ranges)
+	}
+	if concurrency < 1 {
+		concurrency = 1
+	}
+	d.update(taskID, func(item *task.Task) {
+		item.Connections = concurrency
+	})
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -645,7 +654,7 @@ func (d *Driver) downloadChunked(ctx context.Context, taskID string, st *state, 
 		wg   sync.WaitGroup
 		once sync.Once
 		errC error
-		sem  = make(chan struct{}, len(ranges))
+		sem  = make(chan struct{}, concurrency)
 	)
 
 	for _, r := range ranges {
@@ -901,18 +910,46 @@ func (d *Driver) complete(taskID string, total int64) {
 	}
 }
 
-func (d *Driver) segmentCount(st *state) int {
+func (d *Driver) segmentCount(st *state, total, existingSize int64) int {
 	count := optionInt(st.task.Options, "split", d.defaults.Split)
 	if count <= 0 {
 		count = 1
 	}
-	if maxConn := optionInt(st.task.Options, "max-connection-per-server", d.defaults.MaxConnectionPerServer); maxConn > 0 && count > maxConn {
-		count = maxConn
+	maxConn := optionInt(st.task.Options, "max-connection-per-server", d.defaults.MaxConnectionPerServer)
+	minSplit := int64(0)
+	if st.task.Options != nil {
+		if _, ok := st.task.Options["min-split-size"]; ok {
+			minSplit = optionInt64(st.task.Options, "min-split-size", 0)
+		}
 	}
-	if count <= 0 {
-		count = 1
+	return common.EffectiveSegmentCount(total, existingSize, count, maxConn, minSplit)
+}
+
+func (d *Driver) buildDownloadRanges(st *state, start, total int64, segmentCount int) [][2]int64 {
+	pieceLength := int64(0)
+	if st.task.Options != nil {
+		if _, hasChecksum := st.task.Options["checksum"]; !hasChecksum {
+			if _, ok := st.task.Options["piece-length"]; ok {
+				pieceLength = optionInt64(st.task.Options, "piece-length", 0)
+			}
+		}
 	}
-	return count
+	return common.BuildDownloadRanges(start, total, segmentCount, pieceLength)
+}
+
+func optionInt64(options map[string]string, key string, fallback int64) int64 {
+	if options == nil {
+		return fallback
+	}
+	value, ok := options[key]
+	if !ok {
+		return fallback
+	}
+	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
 }
 
 func (d *Driver) waitBytes(ctx context.Context, st *state, n int64) error {

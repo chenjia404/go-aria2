@@ -824,19 +824,23 @@ func TestGoAria2_StrictAuthRequiresToken(t *testing.T) {
 	}
 }
 
-func TestGoAria2_UnimplementedOptionRejected(t *testing.T) {
+func TestGoAria2_SplitOptionsAccepted(t *testing.T) {
 	work := t.TempDir()
-	secret := "compare-unimpl-opt"
+	secret := "compare-split-opts"
 	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
 	ctx := context.Background()
 
-	if _, err := goAria.call(ctx, "aria2.addUri", []any{
+	gid := mustString(t, mustCallSlice(t, ctx, goAria, "aria2.addUri", []any{
 		[]any{"http://example.com/a.bin"},
-		map[string]any{"pause": "true", "min-split-size": "16"},
-	}); err == nil {
-		t.Fatal("min-split-size should be rejected")
-	} else if !strings.Contains(err.Error(), "Option not implemented") {
-		t.Fatalf("unexpected error: %v", err)
+		map[string]any{
+			"pause":          "true",
+			"min-split-size": "1M",
+			"piece-length":   "512K",
+			"index-out":      "renamed.bin",
+		},
+	}), "addUri with split options")
+	if gid == "" {
+		t.Fatal("expected gid")
 	}
 }
 
