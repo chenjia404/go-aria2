@@ -156,9 +156,9 @@ func TestAria2Api_ChangeGlobalOption(t *testing.T) {
 	t.Parallel()
 
 	env := newRPCTestEnv(t, manager.Options{})
-	rpcErr := env.ExpectRPCError("aria2.changeGlobalOption", map[string]any{"file-allocation": "none"})
-	if rpcErr == nil || rpcErr.Code != jsonrpc.CodeInvalidParams {
-		t.Fatalf("file-allocation should be rejected as unimplemented, got %#v", rpcErr)
+	opts := env.MustCall("aria2.changeGlobalOption", map[string]any{"file-allocation": "none"}).(map[string]string)
+	if opts["file-allocation"] != "none" {
+		t.Fatalf("file-allocation should be accepted, got %#v", opts)
 	}
 
 	env.ExpectError("aria2.changeGlobalOption", map[string]any{"file-allocation": "foo"})
@@ -185,9 +185,11 @@ func TestAria2Api_ChangeOptionRejectsBadFileAllocation(t *testing.T) {
 	)
 
 	env.ExpectError("aria2.changeOption", gid, map[string]any{"file-allocation": "foo"})
-	rpcErr := env.ExpectRPCError("aria2.changeOption", gid, map[string]any{"file-allocation": "none"})
-	if rpcErr == nil || rpcErr.Code != jsonrpc.CodeInvalidParams {
-		t.Fatalf("file-allocation none should be unimplemented, got %#v", rpcErr)
+	if raw := env.MustCall("aria2.changeOption", gid, map[string]any{"file-allocation": "none"}); raw != "OK" {
+		t.Fatalf("file-allocation none should be accepted, got %#v", raw)
+	}
+	if env.Option(gid)["file-allocation"] != "none" {
+		t.Fatalf("expected file-allocation in task options")
 	}
 }
 

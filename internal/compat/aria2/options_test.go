@@ -83,9 +83,12 @@ func TestPrepareChangeGlobalOptions_FiltersDisallowed(t *testing.T) {
 		t.Fatalf("expected max-overall-download-limit preserved, got %#v", filtered)
 	}
 
-	_, err = prepareChangeGlobalOptions(map[string]string{"file-allocation": "none"})
-	if err == nil {
-		t.Fatal("expected error for unimplemented file-allocation")
+	filtered, err = prepareChangeGlobalOptions(map[string]string{"file-allocation": "none"})
+	if err != nil {
+		t.Fatalf("file-allocation should be accepted: %v", err)
+	}
+	if filtered["file-allocation"] != "none" {
+		t.Fatalf("expected file-allocation preserved, got %#v", filtered)
 	}
 }
 
@@ -146,7 +149,10 @@ func TestIsValidURI(t *testing.T) {
 	if isValidURI("not uri") {
 		t.Fatal("expected plain text to be invalid")
 	}
-	if isValidURI("ftp://example.com/a") {
-		t.Fatal("expected ftp uri to be invalid")
+	if !isValidURI("ftp://example.com/a") {
+		t.Fatal("expected ftp uri to be valid")
+	}
+	if !isValidURI("sftp://example.com/a") {
+		t.Fatal("expected sftp uri to be valid")
 	}
 }

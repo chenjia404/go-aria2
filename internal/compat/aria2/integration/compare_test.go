@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // 与真实 aria2 daemon 并行调用 go-aria2，比对 RPC 响应结构与关键字段。
@@ -784,10 +786,25 @@ func TestGoAria2_UnsupportedURIScheme(t *testing.T) {
 	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
 	ctx := context.Background()
 
-	if _, err := goAria.call(ctx, "aria2.addUri", []any{[]any{"ftp://example.com/a.bin"}}); err == nil {
-		t.Fatal("go-aria2 should reject ftp URI")
+	if _, err := goAria.call(ctx, "aria2.addUri", []any{[]any{"file:///etc/passwd"}}); err == nil {
+		t.Fatal("go-aria2 should reject file URI")
 	} else if !strings.Contains(err.Error(), "Unsupported URI scheme") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestGoAria2_FileAllocationAccepted(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-file-alloc"
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	gid := mustString(t, mustCallSlice(t, ctx, goAria, "aria2.addUri", []any{
+		[]any{"http://example.com/a.bin"},
+		map[string]any{"pause": "true", "file-allocation": "none"},
+	}), "addUri with file-allocation")
+	if gid == "" {
+		t.Fatal("expected gid")
 	}
 }
 
@@ -815,9 +832,9 @@ func TestGoAria2_UnimplementedOptionRejected(t *testing.T) {
 
 	if _, err := goAria.call(ctx, "aria2.addUri", []any{
 		[]any{"http://example.com/a.bin"},
-		map[string]any{"pause": "true", "file-allocation": "none"},
+		map[string]any{"pause": "true", "min-split-size": "16"},
 	}); err == nil {
-		t.Fatal("file-allocation should be rejected")
+		t.Fatal("min-split-size should be rejected")
 	} else if !strings.Contains(err.Error(), "Option not implemented") {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -972,4 +989,72 @@ func contains(items []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func TestCompareAria2_ChangeUri_BT(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-changeuri-bt"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{
+		sampleTorrentB64,
+		[]any{"http://example.com/bt-seed-1.bin", "http://example.com/bt-seed-2.bin"},
+		map[string]any{"pause": "true"},
+	}
+	aria2GID := mustString(t, first(rawCall(t, ctx, aria2, goAria, "aria2.addTorrent", params)), "aria2 gid")
+	goGID := mustString(t, second(rawCall(t, ctx, aria2, goAria, "aria2.addTorrent", params)), "go gid")
+
+	delURIs := []any{"http://example.com/bt-seed-2.bin"}
+	addURIs := []any{"http://example.com/bt-seed-added.bin", "baduri"}
+	compareChangeURICounts(t, ctx, aria2, goAria, aria2GID, goGID, 1, delURIs, addURIs)
+}
+
+func TestGoAria2_WebSocketAuthAndNotify(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-ws-auth"
+	goAria := startGoAria2DaemonWithExtra(t, work, freeListenPort(t), secret, "enable-websocket=true")
+	ctx := context.Background()
+
+	wsBase := "ws" + strings.TrimPrefix(goAria.baseURL, "http")
+	_, resp, err := websocket.DefaultDialer.Dial(wsBase+"/jsonrpc", nil)
+	if err == nil {
+		t.Fatal("websocket without token should fail")
+	}
+	if resp == nil || resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %#v err=%v", resp, err)
+	}
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsBase+"/jsonrpc?token="+secret, nil)
+	if err != nil {
+		t.Fatalf("websocket dial with token: %v", err)
+	}
+	defer conn.Close()
+
+	gid := mustString(t, mustCallSlice(t, ctx, goAria, "aria2.addUri", []any{
+		[]any{"http://example.com/ws-daemon.bin"},
+		map[string]any{"pause": "true"},
+	}), "addUri")
+	if _, err := goAria.call(ctx, "aria2.unpause", []any{gid}); err != nil {
+		t.Fatalf("unpause: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		var msg map[string]any
+		if err := conn.ReadJSON(&msg); err != nil {
+			continue
+		}
+		if msg["method"] == "aria2.onDownloadStart" {
+			params, _ := msg["params"].([]any)
+			if len(params) == 1 {
+				if ev, ok := params[0].(map[string]any); ok && ev["gid"] == gid {
+					return
+				}
+			}
+		}
+	}
+	t.Fatal("expected aria2.onDownloadStart over websocket")
 }

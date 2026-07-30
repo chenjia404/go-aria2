@@ -7,15 +7,25 @@ import (
 	"github.com/chenjia404/go-aria2/internal/rpc/jsonrpc"
 )
 
+func TestAcceptImplementedOptions(t *testing.T) {
+	t.Parallel()
+
+	if err := validateAddOptions(map[string]string{
+		"file-allocation": "none",
+		"header":          "X-Test: 1",
+		"pause":           "true",
+	}); err != nil {
+		t.Fatalf("implemented options should be accepted: %v", err)
+	}
+}
+
 func TestRejectUnimplementedOptions(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]string{
-		"file-allocation": "none",
-		"header":          "X-Test: 1",
-		"min-split-size":  "16",
-		"index-out":       "out.bin",
-		"piece-length":    "16",
+		"min-split-size": "16",
+		"index-out":      "out.bin",
+		"piece-length":   "16",
 	}
 	for key, value := range cases {
 		err := validateAddOptions(map[string]string{key: value, "pause": "true"})
@@ -59,26 +69,28 @@ func TestValidateAddURIScheme(t *testing.T) {
 		"https://example.com/x",
 		"ed2k://|file|a.bin|1|hash|/",
 		"magnet:?xt=urn:btih:abc",
+		"ftp://example.com/a",
+		"sftp://example.com/a",
 	} {
 		if err := validateAddURIScheme(uri); err != nil {
 			t.Fatalf("%q should be supported: %v", uri, err)
 		}
 	}
 
-	for _, uri := range []string{"ftp://example.com/a", "sftp://example.com/a", "not uri"} {
+	for _, uri := range []string{"not uri", "file:///local"} {
 		if err := validateAddURIScheme(uri); err == nil {
 			t.Fatalf("%q should be rejected", uri)
 		}
 	}
 }
 
-func TestRpcMethod_AddUri_UnsupportedScheme(t *testing.T) {
+func TestRpcMethod_AddUri_FtpSchemeAccepted(t *testing.T) {
 	t.Parallel()
 
 	env := newRPCTestEnv(t, manager.Options{})
-	rpcErr := env.ExpectRPCError("aria2.addUri", []any{"ftp://example.com/a.bin"})
-	if rpcErr == nil || rpcErr.Code != jsonrpc.CodeInvalidParams {
-		t.Fatalf("expected invalid params, got %#v", rpcErr)
+	gid := env.MustGID("aria2.addUri", []any{"ftp://example.com/a.bin"}, map[string]any{"pause": "true"})
+	if gid == "" {
+		t.Fatal("expected gid for ftp uri")
 	}
 }
 
