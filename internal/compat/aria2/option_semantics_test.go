@@ -9,10 +9,9 @@ func TestStoreOnlyOptionsAreKnownOptions(t *testing.T) {
 		"bt-request-peer-speed-limit": "100K",
 		"bt-enable-lpd":               "true",
 		"bt-remove-unselected-file":   "false",
-		"bt-detach-seed-only":         "false",
-		"bt-max-peers":                "50",
-		"max-upload-limit":            "50K",
-		"max-download-limit":          "100K",
+	"bt-detach-seed-only":         "false",
+	"max-upload-limit":            "50K",
+	"max-download-limit":          "100K",
 	}
 	for key := range storeOnlyOptions {
 		sample, ok := samples[key]

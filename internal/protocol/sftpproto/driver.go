@@ -41,6 +41,7 @@ type state struct {
 	paused     bool
 	removed    bool
 	fileAlloc  common.FileAllocationMode
+	limiter    *common.ByteLimiter
 }
 
 // Driver 实现 aria2 兼容的 SFTP 下载。
@@ -99,6 +100,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 		endpoints:  eps,
 		outputPath: outputPath,
 		fileAlloc:  common.ParseFileAllocation(input.Options),
+		limiter:    common.NewTaskDownloadLimiter(input.Options, nil),
 	}
 	d.mu.Unlock()
 	return item.Clone(), nil
@@ -216,6 +218,9 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 	if _, ok := opts["index-out"]; ok {
 		applySFTPIndexOut(st)
 	}
+	if _, ok := opts["max-download-limit"]; ok {
+		st.limiter = common.NewTaskDownloadLimiter(st.task.Options, nil)
+	}
 	shouldPause, hasPause := opts["pause"]
 	d.mu.Unlock()
 	if hasPause {
@@ -250,6 +255,7 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 			paused:     saved.Status == task.StatusPaused,
 			running:    saved.Status == task.StatusActive,
 			fileAlloc:  common.ParseFileAllocation(saved.Options),
+			limiter:    common.NewTaskDownloadLimiter(saved.Options, nil),
 		}
 		d.mu.Unlock()
 		if saved.Status == task.StatusActive {
@@ -391,6 +397,11 @@ func (d *Driver) downloadEndpoint(ctx context.Context, taskID string, st *state,
 		}
 		n, readErr := remoteFile.Read(buf)
 		if n > 0 {
+			if st.limiter != nil {
+				if err := st.limiter.Wait(ctx, int64(n)); err != nil {
+					return err
+				}
+			}
 			if _, err := file.WriteAt(buf[:n], written); err != nil {
 				return err
 			}

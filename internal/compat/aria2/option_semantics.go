@@ -15,9 +15,8 @@ var storeOnlyOptions = map[string]string{
 	"bt-enable-lpd":               "BT LPD（仅存储）",
 	"bt-remove-unselected-file":   "BT 删除未选文件（仅存储）",
 	"bt-detach-seed-only":         "BT 仅分离做种（仅存储）",
-	"bt-max-peers":                "BT 最大 peer 数（仅启动配置/存储，changeOption 不热更新）",
-	"max-upload-limit":            "任务级上传限速（仅存储；全局限速用 max-overall-upload-limit）",
-	"max-download-limit":          "任务级下载限速（HTTP 已实现；FTP/SFTP/BT 仅存储）",
+	"max-upload-limit":            "任务级上传限速（BT 等协议仅存储；全局限速用 max-overall-upload-limit）",
+	"max-download-limit":          "任务级下载限速（BT 仅存储；HTTP/FTP/SFTP 已实现）",
 }
 
 // startupOnlyOptions 仅 daemon 启动配置生效，changeGlobalOption 写入后静默忽略（见 globalDisallowedOptions）。

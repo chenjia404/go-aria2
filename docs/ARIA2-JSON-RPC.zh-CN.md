@@ -85,7 +85,7 @@
 | 选项 | 状态 |
 |------|------|
 | `dir`、`pause`、`out`、`http-user-agent`、`http-referer`、`bt-tracker`、`select-file`、`split` 等 | 已实现语义 |
-| `max-download-limit` | **已实现**：HTTP 驱动；FTP/SFTP/BT 仅存储（见 `storeOnlyOptions`） |
+| `max-download-limit` | **已实现**：HTTP/FTP/SFTP 驱动；BT 仅存储（见 `storeOnlyOptions`） |
 | `max-upload-limit` | **仅存储**：任务级上传限速尚未在驱动层生效 |
 | `file-allocation`、`index-out` | **已实现**：HTTP/FTP/SFTP/BT 驱动（`changeOption` 更新 `index-out` 时同步输出路径） |
 | `header`、`min-split-size`、`piece-length` | **已实现**：HTTP 驱动 |
@@ -94,6 +94,7 @@
 | `continue`、`allow-overwrite` | **已实现**：HTTP/FTP/SFTP |
 | `checksum` | **已实现**：`addUri`/`changeOption` 时校验格式；HTTP 下载完成后校验 |
 | `seed-ratio`、`seed-time` | **已实现**：BT 做种策略（任务级选项覆盖全局） |
+| `bt-max-peers` | **已实现**：`addTorrent`/`changeOption` 调用 `SetMaxEstablishedConns` |
 | `bt-request-peer-speed-limit` 等 | **仅存储**：见 `option_semantics.go` 中 `storeOnlyOptions` |
 | 其他未列出键 | 可能被接受并存储，但不保证驱动层生效 |
 

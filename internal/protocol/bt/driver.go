@@ -263,6 +263,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 	if err != nil {
 		return nil, err
 	}
+	applyBTMaxPeers(tor, input.Options, d.opts.MaxPeers)
 	if input.Name != "" {
 		tor.SetDisplayName(input.Name)
 	}
@@ -508,6 +509,22 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 			return err
 		}
 	}
+	if value, ok := opts["bt-max-peers"]; ok {
+		d.mu.Lock()
+		st := d.tasks[taskID]
+		if st == nil || st.removed {
+			d.mu.Unlock()
+			return manager.ErrTaskNotFound
+		}
+		if st.options == nil {
+			st.options = map[string]string{}
+		}
+		st.options["bt-max-peers"] = value
+		tor := st.torrent
+		merged := cloneMap(st.options)
+		d.mu.Unlock()
+		applyBTMaxPeers(tor, merged, d.opts.MaxPeers)
+	}
 	return nil
 }
 
@@ -563,6 +580,7 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 		if saved.Name != "" {
 			tor.SetDisplayName(saved.Name)
 		}
+		applyBTMaxPeers(tor, effOpts, d.opts.MaxPeers)
 
 		resumeAfterRestore := saved.Status == task.StatusActive
 		st := &state{
