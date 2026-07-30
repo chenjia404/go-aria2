@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	goed2k "github.com/monkeyWie/goed2k"
+	goed2k "github.com/goed2k/core"
 
 	"github.com/chenjia404/go-aria2/internal/core/task"
 )
@@ -25,7 +25,8 @@ func parseLink(raw string) (*link, error) {
 		return nil, fmt.Errorf("invalid ed2k URI")
 	}
 
-	parsed, err := goed2k.ParseEMuleLink(raw)
+	baseURI := baseEMuleLink(raw)
+	parsed, err := goed2k.ParseEMuleLink(baseURI)
 	if err != nil {
 		return nil, fmt.Errorf("invalid ed2k URI: %w", err)
 	}
@@ -42,6 +43,15 @@ func parseLink(raw string) (*link, error) {
 		Sources:   sources,
 		SourceURI: raw,
 	}, nil
+}
+
+// baseEMuleLink 剥离 h=/s= 等扩展段，供 goed2k/core ParseEMuleLink 解析标准五段文件链接。
+func baseEMuleLink(raw string) string {
+	parts := strings.Split(raw, "|")
+	if len(parts) < 5 {
+		return raw
+	}
+	return strings.Join(append(parts[:5], "/"), "|")
 }
 
 // parseLinkExtras 从 ed2k 文件链接尾部提取 goed2k.ParseEMuleLink 不解析的扩展段（h=、s=）。

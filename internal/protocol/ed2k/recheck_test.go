@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	goed2k "github.com/monkeyWie/goed2k"
-	"github.com/monkeyWie/goed2k/protocol"
+	goed2k "github.com/goed2k/core"
+	"github.com/goed2k/core/protocol"
 )
 
 func TestHashED2KFileSinglePiece(t *testing.T) {

@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	goed2k "github.com/monkeyWie/goed2k"
-	"github.com/monkeyWie/goed2k/protocol"
+	goed2k "github.com/goed2k/core"
+	"github.com/goed2k/core/protocol"
 
 	"github.com/chenjia404/go-aria2/internal/core/manager"
 	"github.com/chenjia404/go-aria2/internal/core/task"

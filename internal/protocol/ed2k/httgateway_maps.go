@@ -3,8 +3,8 @@ package ed2k
 import (
 	"strings"
 
-	goed2k "github.com/monkeyWie/goed2k"
-	"github.com/monkeyWie/goed2k/protocol"
+	goed2k "github.com/goed2k/core"
+	"github.com/goed2k/core/protocol"
 
 	ed2kmodel "github.com/chenjia404/go-aria2/internal/rpc/ed2kapi/model"
 )
