@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -306,4 +307,60 @@ func mustString(t *testing.T, raw json.RawMessage, label string) string {
 		t.Fatalf("%s: expected string, got %s (%v)", label, string(raw), err)
 	}
 	return s
+}
+
+// startSlowDownloadServer 提供长时间保持连接的 HTTP 端点，便于在集成测试中构造 active 下载。
+func startSlowDownloadServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.WriteHeader(http.StatusOK)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		buf := make([]byte, 1024)
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-ticker.C:
+				if _, err := w.Write(buf); err != nil {
+					return
+				}
+				if flusher, ok := w.(http.Flusher); ok {
+					flusher.Flush()
+				}
+			}
+		}
+	}))
+	t.Cleanup(func() {
+		ts.CloseClientConnections()
+	})
+	return ts
+}
+
+func forceRemoveDownloads(t *testing.T, ctx context.Context, d *daemonHandle, gids ...string) {
+	t.Helper()
+	for _, gid := range gids {
+		_, _ = d.call(ctx, "aria2.pause", []any{gid})
+		if _, err := d.call(ctx, "aria2.forceRemove", []any{gid}); err != nil {
+			t.Logf("%s forceRemove %s: %v", d.name, gid, err)
+		}
+	}
+}
+
+func waitUntilTaskStatus(t *testing.T, ctx context.Context, d *daemonHandle, gid, want string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		status := decodeJSON[map[string]any](t, mustCall(t, ctx, d, "aria2.tellStatus", gid), d.name+" tellStatus")
+		if status["status"] == want {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	status := decodeJSON[map[string]any](t, mustCall(t, ctx, d, "aria2.tellStatus", gid), d.name+" tellStatus final")
+	t.Fatalf("%s task %s status want %q got %#v", d.name, gid, want, status["status"])
 }

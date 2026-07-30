@@ -327,6 +327,13 @@ func (s *Service) unpause(ctx context.Context, params []any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	item, err := s.manager.TellStatus(ctx, gid)
+	if err != nil {
+		return nil, mapManagerRPCError(err)
+	}
+	if !taskCanBeUnpaused(item) {
+		return nil, errCannotUnpauseNow(gid)
+	}
 	updated, err := s.manager.Unpause(ctx, gid)
 	if err != nil {
 		return nil, mapManagerRPCError(err)

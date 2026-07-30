@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 // 与真实 aria2 daemon 并行调用 go-aria2，比对 RPC 响应结构与关键字段。
@@ -608,6 +609,115 @@ func TestCompareAria2_PauseRejectsAlreadyPaused(t *testing.T) {
 			t.Fatalf("%s forcePause should fail for already paused task", d.name)
 		}
 	}
+}
+
+func TestCompareAria2_UnpausePausedTask(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-unpause-paused"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{[]any{"http://example.com/unpause-paused.bin"}, map[string]any{"pause": "true"}}
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		gid := mustString(t, mustCallSlice(t, ctx, d, "aria2.addUri", params), d.name+" addUri")
+		if got := mustString(t, mustCall(t, ctx, d, "aria2.unpause", gid), d.name+" unpause"); got != gid {
+			t.Fatalf("%s unpause returned %q", d.name, got)
+		}
+	}
+}
+
+func TestCompareAria2_UnpauseRejectsNonPaused(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-unpause-reject"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	ts := startSlowDownloadServer(t)
+	slowURL := ts.URL + "/slow.bin"
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		mustCall(t, ctx, d, "aria2.changeGlobalOption", map[string]any{"max-concurrent-downloads": "1"})
+	}
+
+	pauseParams := []any{[]any{slowURL}, map[string]any{"pause": "true"}}
+	aria2Active := mustString(t, first(rawCall(t, ctx, aria2, goAria, "aria2.addUri", pauseParams)), "aria2 active gid")
+	goActive := mustString(t, second(rawCall(t, ctx, aria2, goAria, "aria2.addUri", pauseParams)), "go active gid")
+	mustCall(t, ctx, aria2, "aria2.unpause", aria2Active)
+	mustCall(t, ctx, goAria, "aria2.unpause", goActive)
+
+	waitUntilTaskStatus(t, ctx, aria2, aria2Active, "active", 20*time.Second)
+	waitUntilTaskStatus(t, ctx, goAria, goActive, "active", 20*time.Second)
+
+	aria2Waiting := mustString(t, first(rawCall(t, ctx, aria2, goAria, "aria2.addUri", []any{[]any{slowURL}})), "aria2 waiting gid")
+	goWaiting := mustString(t, second(rawCall(t, ctx, aria2, goAria, "aria2.addUri", []any{[]any{slowURL}})), "go waiting gid")
+	for _, pair := range []struct {
+		d   *daemonHandle
+		gid string
+	}{
+		{aria2, aria2Waiting},
+		{goAria, goWaiting},
+	} {
+		status := decodeJSON[map[string]any](t, mustCall(t, ctx, pair.d, "aria2.tellStatus", pair.gid), pair.d.name+" waiting status")
+		if status["status"] != "waiting" {
+			t.Fatalf("%s expected waiting, got %#v", pair.d.name, status["status"])
+		}
+	}
+
+	if _, err := aria2.call(ctx, "aria2.unpause", []any{aria2Active}); err == nil {
+		t.Fatal("aria2 unpause should fail for active task")
+	}
+	if _, err := goAria.call(ctx, "aria2.unpause", []any{goActive}); err == nil {
+		t.Fatal("go-aria2 unpause should fail for active task")
+	}
+	if _, err := aria2.call(ctx, "aria2.unpause", []any{aria2Waiting}); err == nil {
+		t.Fatal("aria2 unpause should fail for waiting task")
+	}
+	if _, err := goAria.call(ctx, "aria2.unpause", []any{goWaiting}); err == nil {
+		t.Fatal("go-aria2 unpause should fail for waiting task")
+	}
+
+	ts.CloseClientConnections()
+	forceRemoveDownloads(t, ctx, aria2, aria2Active, aria2Waiting)
+	forceRemoveDownloads(t, ctx, goAria, goActive, goWaiting)
+}
+
+func TestCompareAria2_GetServersActiveDownload(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-getservers-active"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	ts := startSlowDownloadServer(t)
+	slowURL := ts.URL + "/slow.bin"
+	for _, d := range []*daemonHandle{aria2, goAria} {
+		mustCall(t, ctx, d, "aria2.changeGlobalOption", map[string]any{"max-concurrent-downloads": "1"})
+	}
+
+	pauseParams := []any{[]any{slowURL}, map[string]any{"pause": "true"}}
+	aria2GID := mustString(t, first(rawCall(t, ctx, aria2, goAria, "aria2.addUri", pauseParams)), "aria2 gid")
+	goGID := mustString(t, second(rawCall(t, ctx, aria2, goAria, "aria2.addUri", pauseParams)), "go gid")
+	mustCall(t, ctx, aria2, "aria2.unpause", aria2GID)
+	mustCall(t, ctx, goAria, "aria2.unpause", goGID)
+
+	waitUntilTaskStatus(t, ctx, aria2, aria2GID, "active", 20*time.Second)
+	waitUntilTaskStatus(t, ctx, goAria, goGID, "active", 20*time.Second)
+
+	aria2Servers := decodeJSON[[]map[string]any](t, mustCall(t, ctx, aria2, "aria2.getServers", aria2GID), "aria2 getServers")
+	goServers := decodeJSON[[]map[string]any](t, mustCall(t, ctx, goAria, "aria2.getServers", goGID), "go getServers")
+	if len(aria2Servers) == 0 || len(goServers) == 0 {
+		t.Fatalf("getServers should return data for active downloads: aria2=%#v go=%#v", aria2Servers, goServers)
+	}
+	for _, key := range []string{"index", "servers"} {
+		if aria2Servers[0][key] == nil || goServers[0][key] == nil {
+			t.Fatalf("missing %q in getServers: aria2=%#v go=%#v", key, aria2Servers[0], goServers[0])
+		}
+	}
+
+	ts.CloseClientConnections()
+	forceRemoveDownloads(t, ctx, aria2, aria2GID)
+	forceRemoveDownloads(t, ctx, goAria, goGID)
 }
 
 func TestCompareAria2_ForceRemove(t *testing.T) {
