@@ -101,7 +101,7 @@ func (s *Service) addMetalink(ctx context.Context, params []any) (any, error) {
 		}
 		created, err := s.manager.Add(ctx, input)
 		if err != nil {
-			return nil, err
+			return nil, mapManagerRPCError(err)
 		}
 		gids = append(gids, created.GID)
 	}

@@ -88,6 +88,12 @@ func apply(cfg *Config, key, value string) error {
 		cfg.RPCMaxRequestSize = v
 	case "rpc-secret":
 		cfg.RPCSecret = value
+	case "rpc-strict-auth":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.RPCStrictAuth = v
 	case "enable-websocket":
 		v, err := parseBool(value)
 		if err != nil {

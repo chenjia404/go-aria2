@@ -89,7 +89,10 @@ func runDaemon(args []string) error {
 		logger.Printf("bootstrap startup jobs skipped: %v", err)
 	}
 
-	service := aria2.NewService(mgr, cfg.RPCSecret)
+	service := aria2.NewServiceWithConfig(mgr, aria2.ServiceConfig{
+		RPCSecret:  cfg.RPCSecret,
+		StrictAuth: cfg.RPCStrictAuth,
+	})
 	service.SetSessionPath(runtimePaths.sessionPath)
 	shutdownReq := make(chan bool, 1)
 	service.SetShutdownHook(func(force bool) {

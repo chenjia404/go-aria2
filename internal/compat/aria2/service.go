@@ -19,6 +19,7 @@ import (
 type Service struct {
 	manager     *manager.Manager
 	rpcSecret   string
+	strictAuth  bool
 	methods     []string
 	startedAt   time.Time
 	sessionID   string
@@ -27,8 +28,19 @@ type Service struct {
 	onShutdown  func(force bool)
 }
 
-// NewService ???? aria2 ?????????????
+// ServiceConfig 配置 aria2 兼容 RPC 服务。
+type ServiceConfig struct {
+	RPCSecret  string
+	StrictAuth bool
+}
+
+// NewService 创建 aria2 兼容 JSON-RPC 服务。
 func NewService(mgr *manager.Manager, rpcSecret string) *Service {
+	return NewServiceWithConfig(mgr, ServiceConfig{RPCSecret: rpcSecret})
+}
+
+// NewServiceWithConfig 使用完整配置创建服务。
+func NewServiceWithConfig(mgr *manager.Manager, cfg ServiceConfig) *Service {
 	methods := []string{
 		"aria2.addUri",
 		"aria2.addTorrent",
@@ -70,11 +82,12 @@ func NewService(mgr *manager.Manager, rpcSecret string) *Service {
 	}
 
 	return &Service{
-		manager:   mgr,
-		rpcSecret: rpcSecret,
-		methods:   append(append([]string(nil), methods...), nativeMethodNames...),
-		startedAt: time.Now(),
-		sessionID: newSessionID(),
+		manager:    mgr,
+		rpcSecret:  cfg.RPCSecret,
+		strictAuth: cfg.StrictAuth,
+		methods:    append(append([]string(nil), methods...), nativeMethodNames...),
+		startedAt:  time.Now(),
+		sessionID:  newSessionID(),
 	}
 }
 
@@ -103,17 +116,23 @@ func (s *Service) SessionInfo() map[string]any {
 	return s.getSessionInfo()
 }
 
-// Invoke ????? aria2 ???????????????? rpc-secret ????????
+// Invoke 分发 aria2 兼容 JSON-RPC 方法；若配置了 rpc-secret 则校验 token。
 func (s *Service) Invoke(ctx context.Context, method string, params []any) (any, error) {
-	if method == "system.listMethods" || method == "system.listNotifications" || method == "system.multicall" {
-		return s.invokeWithoutAuth(ctx, method, params)
+	if s.requiresAuth(method) {
+		authorizedParams, err := s.authorize(params)
+		if err != nil {
+			return nil, err
+		}
+		return s.invokeWithoutAuth(ctx, method, authorizedParams)
 	}
+	return s.invokeWithoutAuth(ctx, method, params)
+}
 
-	authorizedParams, err := s.authorize(params)
-	if err != nil {
-		return nil, err
+func (s *Service) requiresAuth(method string) bool {
+	if s.strictAuth {
+		return true
 	}
-	return s.invokeWithoutAuth(ctx, method, authorizedParams)
+	return method != "system.listMethods" && method != "system.listNotifications" && method != "system.multicall"
 }
 
 func (s *Service) invokeWithoutAuth(ctx context.Context, method string, params []any) (any, error) {
@@ -221,8 +240,8 @@ func (s *Service) addURI(ctx context.Context, params []any) (any, error) {
 		if !ok || strings.TrimSpace(uri) == "" {
 			return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "uri must be a non-empty string")
 		}
-		if !isValidURI(uri) {
-			return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "uri must be a valid URI")
+		if err := validateAddURIScheme(uri); err != nil {
+			return nil, err
 		}
 		uris = append(uris, uri)
 	}
@@ -254,7 +273,7 @@ func (s *Service) addURI(ctx context.Context, params []any) (any, error) {
 	}
 	created, err := s.manager.Add(ctx, input)
 	if err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	return created.GID, nil
 }
@@ -277,7 +296,7 @@ func (s *Service) addTorrent(ctx context.Context, params []any) (any, error) {
 		QueuePosition: position,
 	})
 	if err != nil {
-		return nil, err
+		return nil, mapManagerRPCError(err)
 	}
 	if common.OptionBool(options, "rpc-save-upload-metadata", false) {
 		saveDir := created.SaveDir
