@@ -325,6 +325,8 @@ ed2k-upload-slots=3
 - `file-allocation`（`none`/`trunc`/`prealloc`/`falloc`）、`index-out` 已在 HTTP/FTP/SFTP/BT 驱动落地；`changeOption` 更新 `index-out` 时同步输出路径
 - `connect-timeout`、`timeout` 在 HTTP 驱动生效；`connect-timeout` 亦用于 FTP/SFTP 连接
 - `continue`、`allow-overwrite` 在 HTTP/FTP/SFTP 驱动生效
+- `retry-wait` 在 HTTP/FTP/SFTP 镜像切换前等待
+- `checksum` 在 `addUri`/`changeOption` 时校验格式；HTTP 下载完成后校验
 - `seed-ratio`、`seed-time` 支持任务级覆盖全局 BT 做种策略
 - `getVersion.enabledProtocols` 随 `ed2k-enable` 动态变化；`supportedProtocols` 含 `magnet`
 - `changeUri` 支持 HTTP(S)、BT（web seed）、FTP、SFTP、ED2K 任务

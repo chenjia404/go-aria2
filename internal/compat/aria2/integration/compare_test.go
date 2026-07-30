@@ -67,9 +67,10 @@ func TestCompareAria2_ListMethods(t *testing.T) {
 		"aria2.remove", "aria2.pause", "aria2.unpause", "aria2.pauseAll", "aria2.unpauseAll",
 		"aria2.removeDownloadResult", "aria2.purgeDownloadResult",
 		"aria2.tellStatus", "aria2.tellActive", "aria2.tellWaiting", "aria2.tellStopped",
-		"aria2.getOption", "aria2.changeOption", "aria2.changePosition",
+		"aria2.getOption", "aria2.changeOption", "aria2.changePosition", "aria2.changeUri",
+		"aria2.getFiles", "aria2.getPeers", "aria2.getServers", "aria2.getUris",
 		"aria2.getGlobalOption", "aria2.changeGlobalOption", "aria2.getGlobalStat",
-		"aria2.getVersion", "system.multicall",
+		"aria2.getVersion", "aria2.saveSession", "system.multicall",
 	}
 	for _, method := range required {
 		if !contains(aria2Methods, method) {
@@ -1031,6 +1032,28 @@ func contains(items []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func TestCompareAria2_ChangeUri_FTP(t *testing.T) {
+	work := t.TempDir()
+	secret := "compare-changeuri-ftp"
+	aria2 := startAria2Daemon(t, work, freeListenPort(t), secret)
+	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
+	ctx := context.Background()
+
+	params := []any{
+		[]any{
+			"ftp://mirror1.example/changeuri.bin",
+			"ftp://mirror2.example/changeuri.bin",
+		},
+		map[string]any{"pause": "true"},
+	}
+	aria2GID := mustString(t, first(rawCall(t, ctx, aria2, goAria, "aria2.addUri", params)), "aria2 gid")
+	goGID := mustString(t, second(rawCall(t, ctx, aria2, goAria, "aria2.addUri", params)), "go gid")
+
+	delURIs := []any{"ftp://mirror2.example/changeuri.bin"}
+	addURIs := []any{"ftp://mirror3.example/changeuri.bin", "baduri"}
+	compareChangeURICounts(t, ctx, aria2, goAria, aria2GID, goGID, 1, delURIs, addURIs)
 }
 
 func TestCompareAria2_ChangeUri_BT(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/chenjia404/go-aria2/internal/protocol/common"
 	"github.com/chenjia404/go-aria2/internal/rpc/jsonrpc"
 )
 
@@ -36,13 +37,18 @@ var globalDisallowedOptions = map[string]struct{}{
 	"log-level":            {},
 	"save-session":         {},
 	"input-file":           {},
+	"listen-port":          {},
+	"dht-listen-port":      {},
+	"bt-max-peers":         {},
+	"enable-dht":           {},
+	"enable-dht6":          {},
 }
 
 var fileAllocationValues = map[string]struct{}{
-	"none":    {},
+	"none":     {},
 	"prealloc": {},
-	"trunc":   {},
-	"falloc":  {},
+	"trunc":    {},
+	"falloc":   {},
 }
 
 // validateAddOptions 校验 addUri/addTorrent/addMetalink 中的已知选项值。
@@ -148,6 +154,12 @@ func validateKnownOption(key, value string) error {
 	case "seed-time", "connect-timeout", "timeout", "retry-wait":
 		if _, err := parsePositiveInt(value); err != nil {
 			return optionError(key, value)
+		}
+	case "checksum":
+		if strings.TrimSpace(value) != "" {
+			if err := common.ValidateChecksumOption(value); err != nil {
+				return jsonrpc.NewError(jsonrpc.CodeInvalidParams, err.Error())
+			}
 		}
 	}
 	return nil

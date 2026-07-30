@@ -87,9 +87,12 @@ Common keys include: `dir`, `pause`, `max-concurrent-downloads`, `http-user-agen
 | `dir`, `pause`, `out`, `max-download-limit`, `http-user-agent`, `split`, `select-file`, … | Implemented |
 | `file-allocation`, `index-out` | **Implemented** in HTTP/FTP/SFTP/BT (`changeOption` with `index-out` updates output paths) |
 | `header`, `min-split-size`, `piece-length` | **Implemented** in HTTP driver |
-| `connect-timeout`, `timeout` | **Implemented** in HTTP (`DialContext` / `Client.Timeout`); `connect-timeout` also used for FTP/SFTP |
+| `connect-timeout`, `timeout` | **Implemented** in HTTP (`DialContext` / `Client.Timeout`); `connect-timeout` also for FTP/SFTP |
+| `retry-wait` | **Implemented**: wait before HTTP/FTP/SFTP mirror failover |
 | `continue`, `allow-overwrite` | **Implemented** in HTTP/FTP/SFTP |
+| `checksum` | **Implemented**: validated on add/change; verified after HTTP download |
 | `seed-ratio`, `seed-time` | **Implemented** for BT seeding (per-task overrides global) |
+| `bt-request-peer-speed-limit`, etc. | **Stored only**: see `storeOnlyOptions` in `option_semantics.go` |
 | Other keys | May be stored without driver semantics |
 
 `addUri` schemes: `http`, `https`, `ftp`, `sftp`, `ed2k`, `magnet`. Other schemes return `Unsupported URI scheme` (`-32602`).
@@ -401,7 +404,33 @@ May be `[]` for protocols without peers.
 | `0` | gid | string / number | yes | Task GID (string preferred; JSON integers accepted as decimal gid) |
 | `1` | options | object | yes | Non-empty option map |
 
-**`result`:** `string` — GID.
+**`result`:** `string` — `"OK"`.
+
+---
+
+### 6.17a `aria2.changeUri`
+
+| Index | Name | Type | Required | Description |
+|-------|------|------|----------|-------------|
+| `0` | gid | string | yes | Task GID |
+| `1` | fileIndex | number | yes | 1-based file index |
+| `2` | delURIs | array[string] | yes | URIs to remove |
+| `3` | addURIs | array[string] | yes | URIs to add |
+| `4` | position | number | no | Insert position; `-1` appends |
+
+**`result`:** `[delCount, addCount]` integers.
+
+---
+
+### 6.17b `aria2.changePosition`
+
+| Index | Name | Type | Required | Description |
+|-------|------|------|----------|-------------|
+| `0` | gid | string | yes | Task GID |
+| `1` | pos | number | yes | Target position |
+| `2` | how | string | yes | `POS_SET` / `POS_CUR` / `POS_END` |
+
+**`result`:** `number` — new position.
 
 ---
 
@@ -432,6 +461,7 @@ May be `[]` for protocols without peers.
 | `numActive` | string | Active count |
 | `numWaiting` | string | Waiting/paused-related count |
 | `numStopped` | string | Stopped-related count |
+| `numStoppedTotal` | string | Total stopped count |
 | `downloadSpeed` | string | Aggregate download speed |
 | `uploadSpeed` | string | Aggregate upload speed |
 

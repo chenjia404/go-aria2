@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -36,5 +37,17 @@ func TestParseTimeoutSeconds(t *testing.T) {
 	}
 	if ParseTimeoutSeconds(nil, "timeout") != 0 {
 		t.Fatal("expected zero")
+	}
+}
+
+func TestSleepBetweenMirrors(t *testing.T) {
+	t.Parallel()
+
+	start := time.Now()
+	if err := SleepBetweenMirrors(context.Background(), map[string]string{"retry-wait": "1"}); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed < 900*time.Millisecond {
+		t.Fatalf("expected ~1s wait, got %v", elapsed)
 	}
 }

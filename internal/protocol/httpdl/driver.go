@@ -535,6 +535,11 @@ func (d *Driver) downloadSingle(ctx context.Context, taskID string, st *state, e
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if i+1 < len(urls) {
+			if waitErr := common.SleepBetweenMirrors(ctx, st.task.Options); waitErr != nil {
+				return waitErr
+			}
+		}
 	}
 	if lastErr == nil {
 		lastErr = fmt.Errorf("all mirrors failed")
@@ -724,6 +729,11 @@ func (d *Driver) downloadRange(ctx context.Context, st *state, file *os.File, st
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if i+1 < len(urls) {
+			if waitErr := common.SleepBetweenMirrors(ctx, st.task.Options); waitErr != nil {
+				return waitErr
+			}
+		}
 	}
 	if lastErr == nil {
 		lastErr = fmt.Errorf("all mirrors failed")
@@ -801,6 +811,11 @@ func (d *Driver) probeResource(ctx context.Context, st *state) (int64, bool, err
 		lastErr = err
 		if ctx.Err() != nil {
 			return 0, false, ctx.Err()
+		}
+		if i+1 < len(urls) {
+			if waitErr := common.SleepBetweenMirrors(ctx, st.task.Options); waitErr != nil {
+				return 0, false, waitErr
+			}
 		}
 	}
 	if lastErr == nil {

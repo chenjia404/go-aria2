@@ -135,6 +135,12 @@ func TestValidateKnownOption_PositiveIntOptions(t *testing.T) {
 	if err := validateKnownOption("bt-request-peer-speed-limit", "300K"); err != nil {
 		t.Fatalf("valid bt-request-peer-speed-limit rejected: %v", err)
 	}
+	if err := validateKnownOption("checksum", "sha-1=deadbeef"); err != nil {
+		t.Fatalf("valid checksum rejected: %v", err)
+	}
+	if err := validateKnownOption("checksum", "bad"); err == nil {
+		t.Fatal("expected error for invalid checksum")
+	}
 }
 
 func TestIsValidURI(t *testing.T) {

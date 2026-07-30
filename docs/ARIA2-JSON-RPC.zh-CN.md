@@ -88,8 +88,11 @@
 | `file-allocation`、`index-out` | **已实现**：HTTP/FTP/SFTP/BT 驱动（`changeOption` 更新 `index-out` 时同步输出路径） |
 | `header`、`min-split-size`、`piece-length` | **已实现**：HTTP 驱动 |
 | `connect-timeout`、`timeout` | **已实现**：HTTP 驱动（`DialContext` / `Client.Timeout`）；`connect-timeout` 亦用于 FTP/SFTP 连接 |
+| `retry-wait` | **已实现**：HTTP/FTP/SFTP 镜像切换前等待 |
 | `continue`、`allow-overwrite` | **已实现**：HTTP/FTP/SFTP |
+| `checksum` | **已实现**：`addUri`/`changeOption` 时校验格式；HTTP 下载完成后校验 |
 | `seed-ratio`、`seed-time` | **已实现**：BT 做种策略（任务级选项覆盖全局） |
+| `bt-request-peer-speed-limit` 等 | **仅存储**：见 `option_semantics.go` 中 `storeOnlyOptions` |
 | 其他未列出键 | 可能被接受并存储，但不保证驱动层生效 |
 
 `addUri` 支持的 scheme：`http`、`https`、`ftp`、`sftp`、`ed2k`、`magnet`。其他 scheme 返回 `Unsupported URI scheme`（`-32602`）。
@@ -401,7 +404,33 @@
 | `0` | gid | string / number | 是 | 任务 GID（推荐字符串；JSON 整数也会按十进制 GID 接受） |
 | `1` | options | object | 是 | 要设置的选项，不能为空对象 |
 
-**响应 `result`：** `string`，GID。
+**响应 `result`：** `string`，`"OK"`。
+
+---
+
+### 6.17a `aria2.changeUri`
+
+| 索引 | 名称 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| `0` | gid | string | 是 | 任务 GID |
+| `1` | fileIndex | number | 是 | 文件索引（从 1 起） |
+| `2` | delURIs | array[string] | 是 | 要删除的 URI 列表 |
+| `3` | addURIs | array[string] | 是 | 要添加的 URI 列表 |
+| `4` | position | number | 否 | 插入位置；`-1` 表示追加到末尾 |
+
+**响应 `result`：** `[delCount, addCount]` 两个整数。
+
+---
+
+### 6.17b `aria2.changePosition`
+
+| 索引 | 名称 | 类型 | 必填 | 说明 |
+|------|------|------|------|------|
+| `0` | gid | string | 是 | 任务 GID |
+| `1` | pos | number | 是 | 目标位置 |
+| `2` | how | string | 是 | `POS_SET` / `POS_CUR` / `POS_END` |
+
+**响应 `result`：** `number`，新位置。
 
 ---
 
@@ -432,6 +461,7 @@
 | `numActive` | string | 活动任务数 |
 | `numWaiting` | string | 等待/暂停等 |
 | `numStopped` | string | 已停止相关计数 |
+| `numStoppedTotal` | string | 累计停止任务数 |
 | `downloadSpeed` | string | 总下载速度 |
 | `uploadSpeed` | string | 总上传速度 |
 
