@@ -327,6 +327,8 @@ Conventions:
 - `continue` and `allow-overwrite` in HTTP/FTP/SFTP drivers
 - `retry-wait` waits before HTTP/FTP/SFTP mirror failover
 - `checksum` validated on add/change; verified after HTTP download completes
+- `max-download-limit` enforced in HTTP driver; store-only for FTP/SFTP/BT
+- `max-upload-limit`, `bt-request-peer-speed-limit`, etc. are store-only (`storeOnlyOptions`)
 - `seed-ratio` and `seed-time` support per-task overrides for BT seeding
 - `getVersion.enabledProtocols` reflects `ed2k-enable`; `supportedProtocols` includes `magnet`
 - `changeUri` supports HTTP(S), BT (web seeds), FTP, SFTP, and ED2K downloads

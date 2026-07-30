@@ -15,7 +15,18 @@ var storeOnlyOptions = map[string]string{
 	"bt-enable-lpd":               "BT LPD（仅存储）",
 	"bt-remove-unselected-file":   "BT 删除未选文件（仅存储）",
 	"bt-detach-seed-only":         "BT 仅分离做种（仅存储）",
-	"max-upload-limit":            "任务级上传限速（仅存储，BT 使用全局限速）",
+	"bt-max-peers":                "BT 最大 peer 数（仅启动配置/存储，changeOption 不热更新）",
+	"max-upload-limit":            "任务级上传限速（仅存储；全局限速用 max-overall-upload-limit）",
+	"max-download-limit":          "任务级下载限速（HTTP 已实现；FTP/SFTP/BT 仅存储）",
+}
+
+// startupOnlyOptions 仅 daemon 启动配置生效，changeGlobalOption 写入后静默忽略（见 globalDisallowedOptions）。
+var startupOnlyOptions = map[string]string{
+	"listen-port":     "BT 监听端口（仅启动配置）",
+	"dht-listen-port": "DHT 监听端口（仅启动配置）",
+	"bt-max-peers":    "BT 最大 peer 数（仅启动配置）",
+	"enable-dht":      "DHT 开关（仅启动配置）",
+	"enable-dht6":     "DHT IPv6 开关（仅启动配置）",
 }
 
 // optionAliases 将 aria2 别名选项规范为 go-aria2 内部使用的键名。

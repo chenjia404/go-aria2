@@ -84,7 +84,9 @@ Common keys include: `dir`, `pause`, `max-concurrent-downloads`, `http-user-agen
 
 | Option | Status |
 |--------|--------|
-| `dir`, `pause`, `out`, `max-download-limit`, `http-user-agent`, `split`, `select-file`, … | Implemented |
+| `dir`, `pause`, `out`, `http-user-agent`, `split`, `select-file`, … | Implemented |
+| `max-download-limit` | **Implemented** in HTTP driver; store-only for FTP/SFTP/BT (`storeOnlyOptions`) |
+| `max-upload-limit` | **Store-only**; per-task upload limit not applied in drivers yet |
 | `file-allocation`, `index-out` | **Implemented** in HTTP/FTP/SFTP/BT (`changeOption` with `index-out` updates output paths) |
 | `header`, `min-split-size`, `piece-length` | **Implemented** in HTTP driver |
 | `connect-timeout`, `timeout` | **Implemented** in HTTP (`DialContext` / `Client.Timeout`); `connect-timeout` also for FTP/SFTP |
