@@ -84,7 +84,9 @@
 
 | 选项 | 状态 |
 |------|------|
-| `dir`、`pause`、`out`、`max-download-limit`、`http-user-agent`、`http-referer`、`bt-tracker`、`select-file`、`split` 等 | 已实现语义 |
+| `dir`、`pause`、`out`、`http-user-agent`、`http-referer`、`bt-tracker`、`select-file`、`split` 等 | 已实现语义 |
+| `max-download-limit` | **已实现**：HTTP 驱动；FTP/SFTP/BT 仅存储（见 `storeOnlyOptions`） |
+| `max-upload-limit` | **仅存储**：任务级上传限速尚未在驱动层生效 |
 | `file-allocation`、`index-out` | **已实现**：HTTP/FTP/SFTP/BT 驱动（`changeOption` 更新 `index-out` 时同步输出路径） |
 | `header`、`min-split-size`、`piece-length` | **已实现**：HTTP 驱动 |
 | `connect-timeout`、`timeout` | **已实现**：HTTP 驱动（`DialContext` / `Client.Timeout`）；`connect-timeout` 亦用于 FTP/SFTP 连接 |

@@ -100,10 +100,19 @@ func TestRpcMethod_ChangeGlobalOption_WithBadOption(t *testing.T) {
 func TestRpcMethod_ChangeGlobalOption_WithNotAllowedOption(t *testing.T) {
 	t.Parallel()
 	env := newRPCTestEnv(t, manager.Options{})
-	raw := env.MustCall("aria2.changeGlobalOption", map[string]any{"enable-rpc": "100K"})
+	raw := env.MustCall("aria2.changeGlobalOption", map[string]any{
+		"enable-rpc":      "true",
+		"file-allocation": "none",
+	})
 	opts := mustStringMap(t, raw)
 	if opts == nil {
 		t.Fatal("expected global options map")
+	}
+	if _, ok := opts["enable-rpc"]; ok {
+		t.Fatal("enable-rpc should be filtered from changeGlobalOption result")
+	}
+	if opts["file-allocation"] != "none" {
+		t.Fatalf("file-allocation should be applied: %#v", opts)
 	}
 }
 

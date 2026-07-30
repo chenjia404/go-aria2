@@ -92,6 +92,58 @@ func TestPrepareChangeGlobalOptions_FiltersDisallowed(t *testing.T) {
 	}
 }
 
+func TestPrepareChangeGlobalOptions_FiltersAllDisallowed(t *testing.T) {
+	t.Parallel()
+
+	input := map[string]string{
+		"file-allocation": "none",
+		"dir":             "/tmp/global",
+	}
+	for key := range globalDisallowedOptions {
+		input[key] = "ignored"
+	}
+	for _, key := range []string{"out", "pause", "max-download-limit", "select-file"} {
+		input[key] = "ignored"
+	}
+
+	filtered, err := prepareChangeGlobalOptions(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if filtered["file-allocation"] != "none" {
+		t.Fatalf("expected file-allocation preserved, got %#v", filtered)
+	}
+	if filtered["dir"] != "/tmp/global" {
+		t.Fatalf("expected dir preserved, got %#v", filtered)
+	}
+	for key := range globalDisallowedOptions {
+		if _, ok := filtered[key]; ok {
+			t.Fatalf("globalDisallowed option %q should be filtered", key)
+		}
+	}
+	for _, key := range []string{"out", "pause", "max-download-limit", "select-file"} {
+		if _, ok := filtered[key]; ok {
+			t.Fatalf("task-only option %q should be filtered", key)
+		}
+	}
+}
+
+func TestIsTaskOnlyOption(t *testing.T) {
+	t.Parallel()
+
+	taskOnly := []string{"out", "pause", "gid", "index-out", "select-file", "split", "max-download-limit", "max-upload-limit"}
+	for _, key := range taskOnly {
+		if !isTaskOnlyOption(key) {
+			t.Fatalf("%q should be task-only", key)
+		}
+	}
+	for _, key := range []string{"dir", "file-allocation", "max-overall-download-limit"} {
+		if isTaskOnlyOption(key) {
+			t.Fatalf("%q should not be task-only", key)
+		}
+	}
+}
+
 func TestFilterHiddenOptions(t *testing.T) {
 	t.Parallel()
 

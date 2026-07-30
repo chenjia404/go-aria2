@@ -327,6 +327,8 @@ ed2k-upload-slots=3
 - `continue`、`allow-overwrite` 在 HTTP/FTP/SFTP 驱动生效
 - `retry-wait` 在 HTTP/FTP/SFTP 镜像切换前等待
 - `checksum` 在 `addUri`/`changeOption` 时校验格式；HTTP 下载完成后校验
+- `max-download-limit` 在 HTTP 驱动生效；FTP/SFTP/BT 仅存储
+- `max-upload-limit`、`bt-request-peer-speed-limit` 等见 `storeOnlyOptions`（仅存储）
 - `seed-ratio`、`seed-time` 支持任务级覆盖全局 BT 做种策略
 - `getVersion.enabledProtocols` 随 `ed2k-enable` 动态变化；`supportedProtocols` 含 `magnet`
 - `changeUri` 支持 HTTP(S)、BT（web seed）、FTP、SFTP、ED2K 任务
