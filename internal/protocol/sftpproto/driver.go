@@ -237,7 +237,7 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 	shouldPause, hasPause := opts["pause"]
 	d.mu.Unlock()
 	if hasPause {
-		if strings.EqualFold(shouldPause, "true") || shouldPause == "1" {
+		if common.ResolveBoolOption(map[string]string{"pause": shouldPause}, "pause", false) {
 			return d.Pause(ctx, taskID, false)
 		}
 		return d.Start(ctx, taskID)
@@ -445,7 +445,20 @@ func (d *Driver) advance(taskID string, completed, total int64) {
 	if st == nil || st.removed {
 		return
 	}
+<<<<<<< HEAD
 	common.ApplyTransferProgress(st.task, completed, total, &st.lastBytes, &st.lastTick)
+=======
+	st.task.CompletedLength = completed
+	if total > 0 {
+		st.task.TotalLength = total
+		if len(st.task.Files) > 0 {
+			st.task.Files[0].Length = total
+			st.task.Files[0].CompletedLength = completed
+		}
+	}
+	st.task.Status = task.StatusActive
+	st.task.UpdatedAt = time.Now()
+>>>>>>> 324ab5c (fix(sftp): 修复 advance 进度同步、pause 解析与测试覆盖（第十八轮）)
 }
 
 func (d *Driver) complete(taskID string) {
