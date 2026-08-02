@@ -63,7 +63,8 @@ func transitionNotifications(t *task.Task, old, next taskSnap) []map[string]any 
 	case task.StatusPaused:
 		out = append(out, aria2Notify("aria2.onDownloadPause", eventObj))
 	case task.StatusActive:
-		if old.Status == task.StatusPaused || old.Status == task.StatusWaiting {
+		// prev 未初始化时说明 EventTaskAdded 可能因订阅端繁忙被丢弃，仍应补发 onDownloadStart。
+		if old.Status == task.StatusPaused || old.Status == task.StatusWaiting || old.Status == "" {
 			out = append(out, aria2Notify("aria2.onDownloadStart", eventObj))
 		}
 	case task.StatusError:
