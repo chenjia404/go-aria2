@@ -336,7 +336,8 @@ Conventions:
 - **`aria2-compat-mode`**: closer aria2 runtime behavior (enables `rpc-strict-auth`; dual-writes aria2 text save-session alongside JSON for interchange with native aria2)
 - `FileStore` auto-detects JSON vs aria2 text save-session on startup; if `session.json` is missing, loads the companion extensionless file when present
 - `changeGlobalOption` logs warnings for read-only or task-only keys (no longer fully silent)
-- `bt-request-peer-speed-limit`, etc. remain store-only (`storeOnlyOptions`)
+- `bt-request-peer-speed-limit`: when whole-torrent download speed is below this threshold (default 50K) or there are no peers, triggers DHT announce to find more peers; when seeding, also boosts if below `bt-max-peers` and upload is not saturated
+- `getGlobalOption` now includes read-only snapshots for `enable-dht`, `listen-port`, `bt-max-peers`, etc.
 - `seed-ratio` and `seed-time` support per-task overrides for BT seeding
 - `getVersion.enabledProtocols` reflects `ed2k-enable`; `supportedProtocols` includes `magnet`
 - `changeUri` supports HTTP(S), BT (web seeds), FTP, SFTP, and ED2K downloads

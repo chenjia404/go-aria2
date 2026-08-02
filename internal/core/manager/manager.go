@@ -28,6 +28,11 @@ type uploadLimitSetter interface {
 	SetUploadLimit(bytesPerSec int64)
 }
 
+// requestPeerSpeedSetter 由 BT 驱动实现，用于运行期同步 bt-request-peer-speed-limit。
+type requestPeerSpeedSetter interface {
+	SetRequestPeerSpeedLimit(bytesPerSec int64)
+}
+
 // downloadLimitSetter 由 BT/HTTP 等驱动实现，用于运行期同步全局下载限速。
 type downloadLimitSetter interface {
 	SetDownloadLimit(bytesPerSec int64)
@@ -636,6 +641,8 @@ func (m *Manager) ChangeGlobalOption(opts map[string]string) map[string]string {
 	var uploadLimitSet bool
 	var downloadLimit int64
 	var downloadLimitSet bool
+	var requestPeerSpeedLimit int64
+	var requestPeerSpeedLimitSet bool
 	for k, v := range opts {
 		if k == "bt-tracker" || k == "bt-exclude-tracker" {
 			needBT = true
@@ -650,6 +657,12 @@ func (m *Manager) ChangeGlobalOption(opts map[string]string) map[string]string {
 			if parsed, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
 				downloadLimit = parsed
 				downloadLimitSet = true
+			}
+		}
+		if k == "bt-request-peer-speed-limit" {
+			if parsed, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+				requestPeerSpeedLimit = parsed
+				requestPeerSpeedLimitSet = true
 			}
 		}
 	}
@@ -718,6 +731,13 @@ func (m *Manager) ChangeGlobalOption(opts map[string]string) map[string]string {
 		for _, drv := range drivers {
 			if setter, ok := drv.(downloadLimitSetter); ok {
 				setter.SetDownloadLimit(downloadLimit)
+			}
+		}
+	}
+	if requestPeerSpeedLimitSet {
+		for _, drv := range drivers {
+			if setter, ok := drv.(requestPeerSpeedSetter); ok {
+				setter.SetRequestPeerSpeedLimit(requestPeerSpeedLimit)
 			}
 		}
 	}

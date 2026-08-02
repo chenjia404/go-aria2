@@ -85,7 +85,7 @@ Common keys include: `dir`, `pause`, `max-concurrent-downloads`, `http-user-agen
 | Option | Status |
 |--------|--------|
 | `dir`, `pause`, `out`, `http-user-agent`, `split`, `select-file`, … | Implemented |
-| `max-download-limit` | **Implemented** in HTTP/FTP/SFTP drivers; store-only for BT (`storeOnlyOptions`) |
+| `max-download-limit` | **Implemented** in HTTP/FTP/SFTP/BT drivers (BT per-task token bucket) |
 | `max-upload-limit` | **Store-only**; per-task upload limit not applied in drivers yet |
 | `file-allocation`, `index-out` | **Implemented** in HTTP/FTP/SFTP/BT (`changeOption` with `index-out` updates output paths) |
 | `header`, `min-split-size`, `piece-length` | **Implemented** in HTTP driver |
@@ -95,7 +95,7 @@ Common keys include: `dir`, `pause`, `max-concurrent-downloads`, `http-user-agen
 | `checksum` | **Implemented**: validated on add/change; verified after HTTP download |
 | `seed-ratio`, `seed-time` | **Implemented** for BT seeding (per-task overrides global) |
 | `bt-max-peers` | **Implemented**: `addTorrent` / `changeOption` calls `SetMaxEstablishedConns` |
-| `bt-request-peer-speed-limit`, etc. | **Stored only**: see `storeOnlyOptions` in `option_semantics.go` |
+| `bt-request-peer-speed-limit` | **Implemented**: DHT peer boost when download speed is below threshold or no peers |
 | Other keys | May be stored without driver semantics |
 
 `addUri` schemes: `http`, `https`, `ftp`, `sftp`, `ed2k`, `magnet`. Other schemes return `Unsupported URI scheme` (`-32602`).

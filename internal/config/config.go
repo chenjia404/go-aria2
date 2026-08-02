@@ -57,6 +57,7 @@ type Config struct {
 	BTEnableLPD             bool
 	BTDetachSeedOnly        bool
 	BTRemoveUnselectedFile  bool
+	BTRequestPeerSpeedLimit int64
 	Aria2CompatMode         bool
 	FileAllocation          string
 	MaxUploadLimit          int64
@@ -107,6 +108,7 @@ func Default() *Config {
 		BTForceEncryption:      false,
 		BTRequireCrypto:        false,
 		BTMinCryptoLevel:       "plain",
+		BTRequestPeerSpeedLimit: 50 * 1024,
 		BTTracker:              "",
 		BTExcludeTracker:       "",
 		BTLoadSavedMetadata:    true,

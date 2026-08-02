@@ -336,7 +336,8 @@ ed2k-upload-slots=3
 - **`aria2-compat-mode`**：启用后与 aria2 更接近的运行时行为（自动开启 `rpc-strict-auth`；向 `save-session` 旁路双写 aria2 文本 session，便于与原生 aria2 互换）
 - 启动时 `FileStore` 自动识别 JSON 与 aria2 文本 save-session；`session.json` 缺失时会尝试加载同目录无扩展名伴生文件
 - `changeGlobalOption` 对只读/任务专属选项会写入日志告警（不再完全静默）
-- `bt-request-peer-speed-limit` 等见 `storeOnlyOptions`（仅存储）
+- `bt-request-peer-speed-limit`：整 torrent 下载速度低于该阈值（默认 50K）或尚无 peer 时触发 DHT announce 增连；做种时在未达 `bt-max-peers` 且上传未饱和时同样增连
+- `getGlobalOption` 补齐 `enable-dht`、`listen-port`、`bt-max-peers` 等启动期选项的只读快照
 - `seed-ratio`、`seed-time` 支持任务级覆盖全局 BT 做种策略
 - `getVersion.enabledProtocols` 随 `ed2k-enable` 动态变化；`supportedProtocols` 含 `magnet`
 - `changeUri` 支持 HTTP(S)、BT（web seed）、FTP、SFTP、ED2K 任务
@@ -418,7 +419,7 @@ go test ./internal/compat/aria2/...
 ## 已知限制
 
 - 不是 aria2 的完整替代品，协议与选项语义仍在逐步对齐。
-- 部分 aria2 高级选项（如 HTTP pipelining、实时分块校验、`bt-request-peer-speed-limit`）尚未实现。
+- 部分 aria2 高级选项（如 HTTP pipelining、实时分块校验）尚未实现。
 - BT 严格恢复依赖 torrent 元数据可用。
 - ED2K 的完整恢复能力仍在扩展中。
 

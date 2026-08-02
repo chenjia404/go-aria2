@@ -48,18 +48,7 @@ func (d *Driver) ReannounceTorrent(ctx context.Context, taskID string) error {
 		st.torrent.ModifyTrackers(announceList)
 	}
 	if client != nil {
-		for _, ds := range client.DhtServers() {
-			done, stop, err := st.torrent.AnnounceToDht(ds)
-			if err != nil {
-				continue
-			}
-			go func() {
-				<-done
-				if stop != nil {
-					stop()
-				}
-			}()
-		}
+		announceTorrentToDHT(client, st.torrent)
 	}
 	return nil
 }

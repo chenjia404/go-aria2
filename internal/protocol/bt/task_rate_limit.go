@@ -65,12 +65,18 @@ func (d *Driver) enforceTaskRateLimits() {
 		if deltaWrite < 0 {
 			deltaWrite = 0
 		}
+		var downSpeed, upSpeed int64
+		if elapsed := now.Sub(st.lastRateSampleAt).Seconds(); elapsed > 0 && !st.lastRateSampleAt.IsZero() {
+			downSpeed = int64(float64(deltaRead) / elapsed)
+			upSpeed = int64(float64(deltaWrite) / elapsed)
+		}
 		st.lastRateSampleAt = now
 		st.lastRateBytesRead = readBytes
 		st.lastRateBytesWrite = writeBytes
 
 		d.enforceDownloadRateLimit(st, deltaRead)
 		d.enforceUploadRateLimit(st, deltaWrite)
+		d.enforcePeerBoost(st, downSpeed, upSpeed)
 		d.handleBTCompletionLocked(st, taskID)
 	}
 }

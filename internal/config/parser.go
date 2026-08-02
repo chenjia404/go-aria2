@@ -312,6 +312,12 @@ func apply(cfg *Config, key, value string) error {
 			return err
 		}
 		cfg.BTRemoveUnselectedFile = v
+	case "bt-request-peer-speed-limit":
+		v, err := parseSpeedBytes(value)
+		if err != nil {
+			return fmt.Errorf("invalid bt-request-peer-speed-limit: %w", err)
+		}
+		cfg.BTRequestPeerSpeedLimit = v
 	case "aria2-compat-mode":
 		v, err := parseBool(value)
 		if err != nil {
