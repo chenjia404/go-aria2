@@ -37,6 +37,8 @@ type Options struct {
 	EnableDHT6            bool
 	MaxOverallUploadLimit   int64
 	MaxOverallDownloadLimit int64
+	EnableLPD               bool
+	CheckIntegrity          bool
 }
 
 type state struct {
@@ -57,6 +59,18 @@ type state struct {
 	// selectFile 为 aria2 的 select-file 原始串；空表示下载全部文件（与未指定一致）。
 	selectFile string
 	options    map[string]string
+	// 任务级限速（aria2 max-download-limit / max-upload-limit）。
+	downloadLimiter   *common.ByteLimiter
+	uploadLimiter     *common.ByteLimiter
+	rateLimitPausedDL bool
+	rateLimitPausedUL bool
+	lastRateBytesRead  int64
+	lastRateBytesWrite int64
+	lastRateSampleAt   time.Time
+	// bt-detach-seed-only：做种任务不再写入 session。
+	sessionDetached bool
+	// 完成回调（删除未选文件等）仅执行一次。
+	completionHandled bool
 }
 
 // Driver 使用 anacrolix/torrent 作为 BT 协议实现�?
@@ -164,7 +178,7 @@ func New(opts Options) (*Driver, error) {
 	dhtIPv6 := resolveDHTNodePath(opts.DHTFilePath6, filepath.Join(opts.DataDir, "dht6.dat"))
 	loadDHTNodes(client, dhtIPv4, dhtIPv6)
 	attachSeparateDHTServers(client, opts)
-	return &Driver{
+	drv := &Driver{
 		client:          client,
 		tasks:           make(map[string]*state),
 		rebuildProgress: RebuildBTProgress,
@@ -173,7 +187,10 @@ func New(opts Options) (*Driver, error) {
 		downloadLimiter: downloadLimiter,
 		dhtIPv4Path:     dhtIPv4,
 		dhtIPv6Path:     dhtIPv6,
-	}, nil
+	}
+	go drv.runRateLimitLoop()
+	drv.startLPDIfEnabled()
+	return drv, nil
 }
 
 // SetUploadLimit 运行时调整全局限速（字节/秒，0 表示不限速）。
@@ -289,6 +306,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 		selectFile: strings.TrimSpace(input.Options["select-file"]),
 		options:    cloneMap(input.Options),
 	}
+	applyBTRateLimiters(st, input.Options)
 	if len(item.Files) > 0 {
 		item.Files[0].URIs = d.btURIsForFile(st, 1)
 	}
@@ -323,6 +341,7 @@ func (d *Driver) Start(ctx context.Context, taskID string) error {
 	state.paused = false
 	state.torrent.AllowDataUpload()
 	state.torrent.AllowDataDownload()
+	d.runCheckIntegrityIfNeeded(state)
 	go d.scheduleBTFileSelection(state)
 	return nil
 }
@@ -525,6 +544,27 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 		d.mu.Unlock()
 		applyBTMaxPeers(tor, merged, d.opts.MaxPeers)
 	}
+	if _, hasDL := opts["max-download-limit"]; hasDL || opts["max-upload-limit"] != "" {
+		d.mu.Lock()
+		st := d.tasks[taskID]
+		if st == nil || st.removed {
+			d.mu.Unlock()
+			return manager.ErrTaskNotFound
+		}
+		if st.options == nil {
+			st.options = map[string]string{}
+		}
+		if v, ok := opts["max-download-limit"]; ok {
+			st.options["max-download-limit"] = v
+		}
+		if v, ok := opts["max-upload-limit"]; ok {
+			st.options["max-upload-limit"] = v
+		}
+		applyBTRateLimiters(st, st.options)
+		st.rateLimitPausedDL = false
+		st.rateLimitPausedUL = false
+		d.mu.Unlock()
+	}
 	return nil
 }
 
@@ -594,6 +634,10 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 			verified:   saved.VerifiedLength,
 			selectFile: strings.TrimSpace(effOpts["select-file"]),
 			options:    cloneMap(effOpts),
+		}
+		applyBTRateLimiters(st, effOpts)
+		if strings.EqualFold(saved.Meta["bt.sessionDetached"], "true") {
+			st.sessionDetached = true
 		}
 		if len(st.webSeeds) > 0 {
 			tor.AddWebSeeds(st.webSeeds)
@@ -780,6 +824,21 @@ func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, 
 	item.UploadedLength = writeBytes
 	applyCompletedToFiles(item.Files, item.CompletedLength)
 	d.attachBTFileURIs(state, item.Files)
+
+	if state.sessionDetached {
+		if item.Meta == nil {
+			item.Meta = map[string]string{}
+		}
+		item.Meta["bt.sessionDetached"] = "true"
+	}
+	if len(state.options) > 0 {
+		if item.Options == nil {
+			item.Options = map[string]string{}
+		}
+		for k, v := range state.options {
+			item.Options[k] = v
+		}
+	}
 
 	switch {
 	case forcedStatus != "":

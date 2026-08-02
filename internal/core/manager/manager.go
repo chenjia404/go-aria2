@@ -1251,6 +1251,9 @@ func (m *Manager) snapshotTasksForPersist(ctx context.Context) []*task.Task {
 	for _, taskID := range ids {
 		item, err := m.tellStatusByID(ctx, taskID)
 		if err == nil && item != nil {
+			if m.shouldSkipSessionPersist(taskID, item) {
+				continue
+			}
 			snapshot = append(snapshot, item.Clone())
 			continue
 		}
@@ -1259,10 +1262,26 @@ func (m *Manager) snapshotTasksForPersist(ctx context.Context) []*task.Task {
 		current := m.tasks[taskID]
 		m.mu.RUnlock()
 		if current != nil {
+			if m.shouldSkipSessionPersist(taskID, current) {
+				continue
+			}
 			snapshot = append(snapshot, current.Clone())
 		}
 	}
 	return snapshot
+}
+
+func (m *Manager) shouldSkipSessionPersist(taskID string, item *task.Task) bool {
+	if item != nil && strings.EqualFold(item.Meta["bt.sessionDetached"], "true") {
+		return true
+	}
+	m.mu.RLock()
+	driver := m.driverByTaskID[taskID]
+	m.mu.RUnlock()
+	if checker, ok := driver.(SessionDetachedChecker); ok {
+		return checker.SessionDetached(taskID)
+	}
+	return false
 }
 
 func (m *Manager) snapshotTaskIDsByStatus(statuses ...task.Status) []string {

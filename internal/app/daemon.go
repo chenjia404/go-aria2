@@ -301,6 +301,10 @@ func buildGlobalOptions(cfg *config.Config) map[string]string {
 		"max-connection-per-server":  strconv.Itoa(cfg.MaxConnectionPerServer),
 		"split":                      strconv.Itoa(cfg.Split),
 		"check-certificate":          strconv.FormatBool(cfg.CheckCertificate),
+		"check-integrity":            strconv.FormatBool(cfg.CheckIntegrity),
+		"bt-enable-lpd":              strconv.FormatBool(cfg.BTEnableLPD),
+		"bt-detach-seed-only":        strconv.FormatBool(cfg.BTDetachSeedOnly),
+		"bt-remove-unselected-file":  strconv.FormatBool(cfg.BTRemoveUnselectedFile),
 	}
 }
 

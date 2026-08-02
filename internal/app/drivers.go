@@ -39,6 +39,8 @@ func registerProtocolDrivers(mgr *manager.Manager, cfg *config.Config, paths run
 		EnableDHT6:            cfg.EnableDHT6,
 		MaxOverallUploadLimit:   cfg.MaxOverallUploadLimit,
 		MaxOverallDownloadLimit: cfg.MaxOverallDownloadLimit,
+		EnableLPD:               cfg.BTEnableLPD,
+		CheckIntegrity:          cfg.CheckIntegrity,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("init bt driver: %w", err)
