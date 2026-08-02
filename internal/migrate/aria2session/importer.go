@@ -2,14 +2,12 @@ package aria2session
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/chenjia404/go-aria2/internal/core/manager"
 	"github.com/chenjia404/go-aria2/internal/core/task"
+	"github.com/chenjia404/go-aria2/internal/migrate/aria2session/text"
 )
 
 // Logger 是迁移流程使用的最小日志接口�?
@@ -69,40 +67,40 @@ func (i *Importer) ImportAria2Tasks(ctx context.Context, tasks []Aria2SessionTas
 	var errs []error
 	for _, item := range tasks {
 		if i.Logger != nil {
-			i.Logger.Printf("[INFO] Importing task: %s", displayName(item))
+			i.Logger.Printf("[INFO] Importing task: %s", text.DisplayName(item))
 		}
 
 		input, err := buildAddInput(item, i.Strict)
 		if err != nil {
 			errs = append(errs, err)
 			if i.Logger != nil {
-				i.Logger.Printf("[ERROR] skip task %s: %v", displayName(item), err)
+				i.Logger.Printf("[ERROR] skip task %s: %v", text.DisplayName(item), err)
 			}
 			continue
 		}
 
 		created, err := i.Manager.Add(ctx, input)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", displayName(item), err))
+			errs = append(errs, fmt.Errorf("%s: %w", text.DisplayName(item), err))
 			if i.Logger != nil {
-				i.Logger.Printf("[ERROR] import failed for %s: %v", displayName(item), err)
+				i.Logger.Printf("[ERROR] import failed for %s: %v", text.DisplayName(item), err)
 			}
 			continue
 		}
 
 		if checked, matched, actual, err := verifyTaskChecksum(created); err != nil {
-			errs = append(errs, fmt.Errorf("%s checksum validation failed: %w", displayName(item), err))
+			errs = append(errs, fmt.Errorf("%s checksum validation failed: %w", text.DisplayName(item), err))
 			if i.Logger != nil {
-				i.Logger.Printf("[ERROR] checksum validation failed for %s: %v", displayName(item), err)
+				i.Logger.Printf("[ERROR] checksum validation failed for %s: %v", text.DisplayName(item), err)
 			}
 		} else if checked {
 			expected := checksumRaw(created)
 			if matched {
 				if i.Logger != nil {
-					i.Logger.Printf("[INFO] Checksum verified for %s: %s", displayName(item), actual)
+					i.Logger.Printf("[INFO] Checksum verified for %s: %s", text.DisplayName(item), actual)
 				}
 			} else {
-				err := fmt.Errorf("%s checksum mismatch: expected %s got %s", displayName(item), expected, actual)
+				err := fmt.Errorf("%s checksum mismatch: expected %s got %s", text.DisplayName(item), expected, actual)
 				errs = append(errs, err)
 				if i.Logger != nil {
 					i.Logger.Printf("[ERROR] %v", err)
@@ -123,12 +121,12 @@ func (i *Importer) ImportAria2Tasks(ctx context.Context, tasks []Aria2SessionTas
 }
 
 func buildAddInput(item Aria2SessionTask, strict bool) (task.AddTaskInput, error) {
-	kind, err := routeKind(item.URI)
+	kind, err := text.RouteKind(item.URI)
 	if err != nil {
 		return task.AddTaskInput{}, err
 	}
 
-	opts := cloneMap(item.Options)
+	opts := text.CloneOptions(item.Options)
 	gid := strings.TrimSpace(item.GID)
 	if gid == "" {
 		gid = strings.TrimSpace(opts["gid"])
@@ -145,7 +143,7 @@ func buildAddInput(item Aria2SessionTask, strict bool) (task.AddTaskInput, error
 	if item.Out != "" {
 		opts["out"] = item.Out
 	}
-	if item.Paused || parseBoolValue(opts["pause"]) || parseBoolValue(opts["paused"]) {
+	if item.Paused || text.ParseBoolValue(opts["pause"]) || text.ParseBoolValue(opts["paused"]) {
 		opts["pause"] = "true"
 	}
 	if item.Checksum != "" {
@@ -163,7 +161,7 @@ func buildAddInput(item Aria2SessionTask, strict bool) (task.AddTaskInput, error
 	delete(opts, "paused")
 
 	input := task.AddTaskInput{
-		GID:     generateOrReuseGID(item),
+		GID:     text.GenerateGID(item),
 		URI:     item.URI,
 		SaveDir: item.Dir,
 		Name:    item.Out,
@@ -200,140 +198,10 @@ func buildAddInput(item Aria2SessionTask, strict bool) (task.AddTaskInput, error
 	if metalink := strings.TrimSpace(item.Options["metalink"]); metalink != "" && input.Meta["aria2.metalink"] == "" {
 		input.Meta["aria2.metalink"] = metalink
 	}
-	if item.Paused || parseBoolValue(item.Options["pause"]) || parseBoolValue(item.Options["paused"]) {
+	if item.Paused || text.ParseBoolValue(item.Options["pause"]) || text.ParseBoolValue(item.Options["paused"]) {
 		input.Meta["aria2.paused"] = "true"
 	}
 	return input, nil
-}
-
-func previewTask(item Aria2SessionTask) (*task.Task, error) {
-	kind, err := routeKind(item.URI)
-	if err != nil {
-		return nil, err
-	}
-	saveDir := item.Dir
-	name := item.Out
-	if name == "" {
-		name = derivePreviewName(item.URI)
-	}
-	if saveDir != "" && name != "" {
-		name = filepath.Base(name)
-	}
-
-	t := &task.Task{
-		ID:       generateOrReuseGID(item),
-		GID:      generateOrReuseGID(item),
-		Protocol: kind,
-		Name:     name,
-		Status:   task.StatusWaiting,
-		SaveDir:  saveDir,
-		Options:  cloneMap(item.Options),
-		Meta: map[string]string{
-			"aria2.import":        "true",
-			"aria2.import.source": importSource(item),
-		},
-	}
-	if t.SaveDir != "" {
-		t.Options["dir"] = t.SaveDir
-	}
-	if item.Out != "" {
-		t.Options["out"] = item.Out
-	}
-	if item.Paused || parseBoolValue(item.Options["pause"]) || parseBoolValue(item.Options["paused"]) {
-		t.Status = task.StatusPaused
-		t.Options["pause"] = "true"
-		t.Meta["aria2.paused"] = "true"
-	}
-	if item.Checksum != "" {
-		t.Options["checksum"] = item.Checksum
-		t.Meta["aria2.checksum"] = item.Checksum
-	}
-	if item.Metalink != "" {
-		t.Options["metalink"] = item.Metalink
-		t.Meta["aria2.metalink"] = item.Metalink
-	}
-	if checksum := strings.TrimSpace(item.Options["checksum"]); checksum != "" && t.Meta["aria2.checksum"] == "" {
-		t.Meta["aria2.checksum"] = checksum
-	}
-	if metalink := strings.TrimSpace(item.Options["metalink"]); metalink != "" && t.Meta["aria2.metalink"] == "" {
-		t.Meta["aria2.metalink"] = metalink
-	}
-	if t.Protocol == task.ProtocolBT {
-		t.Meta["bt.resume.mode"] = "fast"
-	}
-	if t.Protocol == task.ProtocolED2K {
-		t.Meta["ed2k.import"] = "true"
-	}
-	if t.Protocol == task.ProtocolHTTP {
-		t.Files = []task.File{{
-			Index:    0,
-			Path:     filepath.Join(saveDir, name),
-			Selected: true,
-			URIs:     []string{item.URI},
-		}}
-	}
-	return t, nil
-}
-
-func routeKind(uri string) (task.Protocol, error) {
-	lower := strings.ToLower(strings.TrimSpace(uri))
-	switch {
-	case strings.HasPrefix(lower, "magnet:"):
-		return task.ProtocolBT, nil
-	case strings.HasPrefix(lower, "ed2k://"):
-		return task.ProtocolED2K, nil
-	case strings.HasPrefix(lower, "http://"), strings.HasPrefix(lower, "https://"):
-		if strings.HasSuffix(lower, ".torrent") {
-			return task.ProtocolBT, nil
-		}
-		return task.ProtocolHTTP, nil
-	default:
-		return "", fmt.Errorf("unsupported aria2 session uri: %s", uri)
-	}
-}
-
-func generateOrReuseGID(item Aria2SessionTask) string {
-	if gid := strings.TrimSpace(item.GID); gid != "" {
-		if len(gid) == 16 {
-			return strings.ToLower(gid)
-		}
-	}
-	if gid := strings.TrimSpace(item.Options["gid"]); gid != "" {
-		if len(gid) == 16 {
-			return strings.ToLower(gid)
-		}
-	}
-
-	sum := sha1.Sum([]byte(strings.Join([]string{item.URI, item.Dir, item.Out}, "\x00")))
-	return hex.EncodeToString(sum[:8])
-}
-
-func derivePreviewName(uri string) string {
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(uri)), "magnet:") {
-		return "magnet-task"
-	}
-	if idx := strings.LastIndex(uri, "/"); idx >= 0 && idx < len(uri)-1 {
-		return uri[idx+1:]
-	}
-	return filepath.Base(uri)
-}
-
-func displayName(item Aria2SessionTask) string {
-	if item.Out != "" {
-		return item.Out
-	}
-	return derivePreviewName(item.URI)
-}
-
-func cloneMap(src map[string]string) map[string]string {
-	if len(src) == 0 {
-		return map[string]string{}
-	}
-	dst := make(map[string]string, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
 }
 
 // ImportED2KTask 导入单个 ED2K 任务。

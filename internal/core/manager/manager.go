@@ -28,6 +28,11 @@ type uploadLimitSetter interface {
 	SetUploadLimit(bytesPerSec int64)
 }
 
+// requestPeerSpeedSetter 由 BT 驱动实现，用于运行期同步 bt-request-peer-speed-limit。
+type requestPeerSpeedSetter interface {
+	SetRequestPeerSpeedLimit(bytesPerSec int64)
+}
+
 // downloadLimitSetter 由 BT/HTTP 等驱动实现，用于运行期同步全局下载限速。
 type downloadLimitSetter interface {
 	SetDownloadLimit(bytesPerSec int64)
@@ -636,6 +641,8 @@ func (m *Manager) ChangeGlobalOption(opts map[string]string) map[string]string {
 	var uploadLimitSet bool
 	var downloadLimit int64
 	var downloadLimitSet bool
+	var requestPeerSpeedLimit int64
+	var requestPeerSpeedLimitSet bool
 	for k, v := range opts {
 		if k == "bt-tracker" || k == "bt-exclude-tracker" {
 			needBT = true
@@ -650,6 +657,12 @@ func (m *Manager) ChangeGlobalOption(opts map[string]string) map[string]string {
 			if parsed, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
 				downloadLimit = parsed
 				downloadLimitSet = true
+			}
+		}
+		if k == "bt-request-peer-speed-limit" {
+			if parsed, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+				requestPeerSpeedLimit = parsed
+				requestPeerSpeedLimitSet = true
 			}
 		}
 	}
@@ -718,6 +731,13 @@ func (m *Manager) ChangeGlobalOption(opts map[string]string) map[string]string {
 		for _, drv := range drivers {
 			if setter, ok := drv.(downloadLimitSetter); ok {
 				setter.SetDownloadLimit(downloadLimit)
+			}
+		}
+	}
+	if requestPeerSpeedLimitSet {
+		for _, drv := range drivers {
+			if setter, ok := drv.(requestPeerSpeedSetter); ok {
+				setter.SetRequestPeerSpeedLimit(requestPeerSpeedLimit)
 			}
 		}
 	}
@@ -826,7 +846,7 @@ func (m *Manager) LoadSession(ctx context.Context) error {
 	return m.fillSlots(ctx)
 }
 
-// SaveSession 将当前任务快照写回存储�?
+// SaveSession 将当前任务快照写回存储。
 func (m *Manager) SaveSession(ctx context.Context) error {
 	if m.store == nil {
 		return nil
@@ -834,20 +854,25 @@ func (m *Manager) SaveSession(ctx context.Context) error {
 	return m.store.Save(ctx, m.snapshotTasksForPersist(ctx))
 }
 
-// Close 在退出前持久化一�?session�?
 // SaveSessionTo 将当前任务快照写入指定路径（aria2.saveSession 兼容）。
 func (m *Manager) SaveSessionTo(ctx context.Context, path string) error {
 	if strings.TrimSpace(path) == "" {
 		return m.SaveSession(ctx)
 	}
-	return session.NewFileStore(path).Save(ctx, m.snapshotTasksForPersist(ctx))
+	snapshot := m.snapshotTasksForPersist(ctx)
+	store := session.NewFileStore(path)
+	if fs, ok := m.store.(*session.FileStore); ok && fs.Aria2ExportPath() != "" {
+		store.SetAria2ExportPath(session.CompanionExportPath(path))
+	}
+	return store.Save(ctx, snapshot)
 }
 
+// Close 在退出前持久化一次 session。
 func (m *Manager) Close(ctx context.Context) error {
 	return m.SaveSession(ctx)
 }
 
-// Subscribe 允许上层订阅管理器事件�?
+// Subscribe 允许上层订阅管理器事件。
 func (m *Manager) Subscribe(buffer int) (<-chan Event, func()) {
 	if buffer <= 0 {
 		buffer = 16

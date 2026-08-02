@@ -63,7 +63,7 @@ func TestPrepareChangeTaskOptions_FiltersGlobalOnly(t *testing.T) {
 func TestPrepareChangeGlobalOptions_FiltersDisallowed(t *testing.T) {
 	t.Parallel()
 
-	filtered, err := prepareChangeGlobalOptions(map[string]string{
+	filtered, _, err := prepareChangeGlobalOptions(map[string]string{
 		"file-allocation":            "none",
 		"enable-rpc":                 "100K",
 		"out":                        "foo.bin",
@@ -73,7 +73,7 @@ func TestPrepareChangeGlobalOptions_FiltersDisallowed(t *testing.T) {
 		t.Fatal("expected error for bad max-overall-download-limit")
 	}
 
-	filtered, err = prepareChangeGlobalOptions(map[string]string{
+	filtered, _, err = prepareChangeGlobalOptions(map[string]string{
 		"max-overall-download-limit": "100K",
 	})
 	if err != nil {
@@ -83,7 +83,7 @@ func TestPrepareChangeGlobalOptions_FiltersDisallowed(t *testing.T) {
 		t.Fatalf("expected max-overall-download-limit preserved, got %#v", filtered)
 	}
 
-	filtered, err = prepareChangeGlobalOptions(map[string]string{"file-allocation": "none"})
+	filtered, _, err = prepareChangeGlobalOptions(map[string]string{"file-allocation": "none"})
 	if err != nil {
 		t.Fatalf("file-allocation should be accepted: %v", err)
 	}
@@ -106,9 +106,12 @@ func TestPrepareChangeGlobalOptions_FiltersAllDisallowed(t *testing.T) {
 		input[key] = "ignored"
 	}
 
-	filtered, err := prepareChangeGlobalOptions(input)
+	filtered, ignored, err := prepareChangeGlobalOptions(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ignored) == 0 {
+		t.Fatal("expected ignored keys for disallowed options")
 	}
 	if filtered["file-allocation"] != "none" {
 		t.Fatalf("expected file-allocation preserved, got %#v", filtered)
@@ -192,6 +195,21 @@ func TestValidateKnownOption_PositiveIntOptions(t *testing.T) {
 	}
 	if err := validateKnownOption("checksum", "bad"); err == nil {
 		t.Fatal("expected error for invalid checksum")
+	}
+}
+
+func TestPrepareChangeGlobalOptions_ReportsIgnored(t *testing.T) {
+	t.Parallel()
+
+	_, ignored, err := prepareChangeGlobalOptions(map[string]string{
+		"listen-port": "6881",
+		"dir":         "/tmp",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ignored) != 1 || ignored[0] != "listen-port" {
+		t.Fatalf("expected listen-port ignored, got %#v", ignored)
 	}
 }
 

@@ -10,9 +10,7 @@ import (
 var unimplementedOptions = map[string]struct{}{}
 
 // storeOnlyOptions 记录已接受并存储、但运行时语义未完整实现的选项（供审计与文档引用，不触发拒绝）。
-var storeOnlyOptions = map[string]string{
-	"bt-request-peer-speed-limit": "BT peer 请求限速（仅存储）",
-}
+var storeOnlyOptions = map[string]string{}
 
 // startupOnlyOptions 仅 daemon 启动配置生效，changeGlobalOption 写入后静默忽略（见 globalDisallowedOptions）。
 var startupOnlyOptions = map[string]string{

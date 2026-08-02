@@ -37,6 +37,7 @@ func runDaemon(args []string) error {
 	if err := applyDaemonCLIOptions(cfg, daemonOpts); err != nil {
 		return err
 	}
+	config.ApplyAria2CompatMode(cfg)
 	normalizeDaemonInputFile(cfg, &daemonOpts)
 	runtimePaths := resolveRuntimePaths(cfg)
 
@@ -61,6 +62,9 @@ func runDaemon(args []string) error {
 	}
 
 	store := session.NewFileStore(runtimePaths.sessionPath)
+	if cfg.Aria2CompatMode {
+		store.SetAria2ExportPath(config.Aria2SessionExportPath(runtimePaths.sessionPath))
+	}
 	mgr := manager.New(manager.Options{
 		DefaultDir:    cfg.Dir,
 		MaxConcurrent: cfg.MaxConcurrentDownloads,
@@ -280,7 +284,11 @@ func buildGlobalOptions(cfg *config.Config) map[string]string {
 		"dht-file-path":              cfg.DHTFilePath,
 		"dht-file-path6":             cfg.DHTFilePath6,
 		"dht-listen-port":            strconv.Itoa(cfg.DHTListenPort),
+		"enable-dht":                 strconv.FormatBool(cfg.EnableDHT),
 		"enable-dht6":                strconv.FormatBool(cfg.EnableDHT6),
+		"listen-port":                strconv.Itoa(cfg.ListenPort),
+		"bt-max-peers":               strconv.Itoa(cfg.BTMaxPeers),
+		"bt-request-peer-speed-limit": strconv.FormatInt(cfg.BTRequestPeerSpeedLimit, 10),
 		"bt-force-encryption":        strconv.FormatBool(cfg.BTForceEncryption),
 		"bt-require-crypto":          strconv.FormatBool(cfg.BTRequireCrypto),
 		"bt-min-crypto-level":        cfg.BTMinCryptoLevel,
@@ -305,6 +313,13 @@ func buildGlobalOptions(cfg *config.Config) map[string]string {
 		"bt-enable-lpd":              strconv.FormatBool(cfg.BTEnableLPD),
 		"bt-detach-seed-only":        strconv.FormatBool(cfg.BTDetachSeedOnly),
 		"bt-remove-unselected-file":  strconv.FormatBool(cfg.BTRemoveUnselectedFile),
+		"aria2-compat-mode":          strconv.FormatBool(cfg.Aria2CompatMode),
+		"file-allocation":            cfg.FileAllocation,
+		"max-upload-limit":           strconv.FormatInt(cfg.MaxUploadLimit, 10),
+		"connect-timeout":            strconv.Itoa(cfg.ConnectTimeout),
+		"timeout":                    strconv.Itoa(cfg.Timeout),
+		"retry-wait":                 strconv.Itoa(cfg.RetryWait),
+		"force-save":                 strconv.FormatBool(cfg.ForceSave),
 	}
 }
 

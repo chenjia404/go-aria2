@@ -41,6 +41,7 @@ type Options struct {
 	CheckIntegrity          bool
 	DetachSeedOnly          bool
 	RemoveUnselectedFile    bool
+	RequestPeerSpeedLimit   int64 // bt-request-peer-speed-limit，低速时增连 peer 阈值（字节/秒，0=禁用）
 }
 
 type state struct {
@@ -69,6 +70,8 @@ type state struct {
 	lastRateBytesRead  int64
 	lastRateBytesWrite int64
 	lastRateSampleAt   time.Time
+	maxPeers           int
+	lastPeerBoostAt    time.Time
 	// bt-detach-seed-only：做种任务不再写入 session。
 	sessionDetached bool
 	// 完成回调（删除未选文件等）仅执行一次。
@@ -221,6 +224,16 @@ func (d *Driver) SetUploadLimit(bytesPerSec int64) {
 	d.uploadLimiter.SetBurst(burst)
 }
 
+// SetRequestPeerSpeedLimit 运行时调整全局 bt-request-peer-speed-limit（字节/秒，0 表示禁用）。
+func (d *Driver) SetRequestPeerSpeedLimit(bytesPerSec int64) {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	d.opts.RequestPeerSpeedLimit = bytesPerSec
+	d.mu.Unlock()
+}
+
 // Close 关闭底层 torrent client�?
 func (d *Driver) Close() error {
 	if d == nil {
@@ -302,7 +315,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 	if err != nil {
 		return nil, err
 	}
-	applyBTMaxPeers(tor, input.Options, d.opts.MaxPeers)
+	maxPeers := applyBTMaxPeers(tor, input.Options, d.opts.MaxPeers)
 	if input.Name != "" {
 		tor.SetDisplayName(input.Name)
 	}
@@ -327,6 +340,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 		started:    false,
 		selectFile: strings.TrimSpace(input.Options["select-file"]),
 		options:    cloneMap(input.Options),
+		maxPeers:   maxPeers,
 	}
 	applyBTRateLimiters(st, input.Options)
 	if len(item.Files) > 0 {
@@ -564,10 +578,22 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 			st.options = map[string]string{}
 		}
 		st.options["bt-max-peers"] = value
-		tor := st.torrent
-		merged := cloneMap(st.options)
+		st.maxPeers = applyBTMaxPeers(st.torrent, st.options, d.opts.MaxPeers)
 		d.mu.Unlock()
-		applyBTMaxPeers(tor, merged, d.opts.MaxPeers)
+	}
+	if value, ok := opts["bt-request-peer-speed-limit"]; ok {
+		d.mu.Lock()
+		st := d.tasks[taskID]
+		if st == nil || st.removed {
+			d.mu.Unlock()
+			return manager.ErrTaskNotFound
+		}
+		if st.options == nil {
+			st.options = map[string]string{}
+		}
+		st.options["bt-request-peer-speed-limit"] = value
+		st.lastPeerBoostAt = time.Time{}
+		d.mu.Unlock()
 	}
 	if _, hasDL := opts["max-download-limit"]; hasDL || opts["max-upload-limit"] != "" {
 		d.mu.Lock()
@@ -650,7 +676,7 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 		if saved.Name != "" {
 			tor.SetDisplayName(saved.Name)
 		}
-		applyBTMaxPeers(tor, effOpts, d.opts.MaxPeers)
+		maxPeers := applyBTMaxPeers(tor, effOpts, d.opts.MaxPeers)
 
 		resumeAfterRestore := saved.Status == task.StatusActive
 		st := &state{
@@ -664,6 +690,7 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 			verified:   saved.VerifiedLength,
 			selectFile: strings.TrimSpace(effOpts["select-file"]),
 			options:    cloneMap(effOpts),
+			maxPeers:   maxPeers,
 		}
 		applyBTRateLimiters(st, effOpts)
 		if strings.EqualFold(saved.Meta["bt.sessionDetached"], "true") {

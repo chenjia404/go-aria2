@@ -43,6 +43,7 @@ func registerProtocolDrivers(mgr *manager.Manager, cfg *config.Config, paths run
 		CheckIntegrity:          cfg.CheckIntegrity,
 		DetachSeedOnly:          cfg.BTDetachSeedOnly,
 		RemoveUnselectedFile:    cfg.BTRemoveUnselectedFile,
+		RequestPeerSpeedLimit:   cfg.BTRequestPeerSpeedLimit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("init bt driver: %w", err)

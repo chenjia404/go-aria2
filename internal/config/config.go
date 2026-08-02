@@ -57,6 +57,14 @@ type Config struct {
 	BTEnableLPD             bool
 	BTDetachSeedOnly        bool
 	BTRemoveUnselectedFile  bool
+	BTRequestPeerSpeedLimit int64
+	Aria2CompatMode         bool
+	FileAllocation          string
+	MaxUploadLimit          int64
+	ConnectTimeout          int
+	Timeout                 int
+	RetryWait               int
+	ForceSave               bool
 	SaveSession             string
 	SaveSessionInterval     time.Duration
 	ED2KEnable              bool
@@ -100,6 +108,7 @@ func Default() *Config {
 		BTForceEncryption:      false,
 		BTRequireCrypto:        false,
 		BTMinCryptoLevel:       "plain",
+		BTRequestPeerSpeedLimit: 50 * 1024,
 		BTTracker:              "",
 		BTExcludeTracker:       "",
 		BTLoadSavedMetadata:    true,
