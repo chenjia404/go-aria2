@@ -76,6 +76,8 @@ type state struct {
 	sessionDetached bool
 	// 完成回调（删除未选文件等）仅执行一次。
 	completionHandled bool
+	// check-integrity / forcePieceCheck 后台校验进行中。
+	integrityRunning bool
 }
 
 // Driver 使用 anacrolix/torrent 作为 BT 协议实现�?
@@ -380,7 +382,7 @@ func (d *Driver) Start(ctx context.Context, taskID string) error {
 	state.lastRateSampleAt = time.Time{}
 	state.torrent.AllowDataUpload()
 	state.torrent.AllowDataDownload()
-	d.runCheckIntegrityIfNeeded(state)
+	d.startIntegrityCheck(taskID, state)
 	go d.scheduleBTFileSelection(state)
 	return nil
 }
@@ -832,13 +834,18 @@ func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, 
 	}
 
 	item.CompletedLength = state.torrent.BytesCompleted()
-	item.VerifiedLength = item.CompletedLength
 	if state.completed > item.CompletedLength {
 		item.CompletedLength = state.completed
 	}
+	verifiedBytes, _ := torrentIntegritySnapshot(state.torrent)
+	item.VerifiedLength = verifiedBytes
 	if state.verified > item.VerifiedLength {
 		item.VerifiedLength = state.verified
 	}
+	if item.VerifiedLength == 0 && item.CompletedLength > 0 {
+		item.VerifiedLength = item.CompletedLength
+	}
+	item.VerifyIntegrityPending = state.integrityRunning
 	item.Seeder = state.torrent.Seeding()
 
 	stats := state.torrent.Stats()

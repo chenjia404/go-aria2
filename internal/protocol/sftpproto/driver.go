@@ -102,6 +102,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 		Options: cloneMap(input.Options),
 		Meta: map[string]string{
 			"sftp.outputPath": outputPath,
+			"sftp.sourceURI":  eps[0].rawURL,
 		},
 	}
 

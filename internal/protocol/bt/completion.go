@@ -1,7 +1,6 @@
 package bt
 
 import (
-	"context"
 	"log"
 	"os"
 	"strings"
@@ -55,19 +54,14 @@ func (d *Driver) handleBTCompletionLocked(st *state, taskID string) {
 	}
 }
 
-func (d *Driver) runCheckIntegrityIfNeeded(st *state) {
+func (d *Driver) runCheckIntegrityIfNeeded(taskID string, st *state) {
 	if st == nil || st.torrent == nil {
 		return
 	}
 	if !d.taskOptionEnabled(st, "check-integrity") {
 		return
 	}
-	tor := st.torrent
-	go func() {
-		if err := tor.VerifyDataContext(context.Background()); err != nil {
-			log.Printf("[bt] check-integrity failed for %s: %v", tor.Name(), err)
-		}
-	}()
+	d.startIntegrityCheck(taskID, st)
 }
 
 func removeUnselectedFiles(tor *torrentlib.Torrent, selectFile string) {

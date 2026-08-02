@@ -2,7 +2,6 @@ package bt
 
 import (
 	"context"
-	"log"
 
 	"github.com/chenjia404/go-aria2/internal/core/manager"
 )
@@ -65,11 +64,6 @@ func (d *Driver) ForcePieceCheck(ctx context.Context, taskID string) error {
 		return manager.ErrTaskNotFound
 	}
 
-	tor := st.torrent
-	go func() {
-		if err := tor.VerifyDataContext(context.Background()); err != nil {
-			log.Printf("[bt] force piece check failed for %s: %v", taskID, err)
-		}
-	}()
+	d.startIntegrityCheck(taskID, st)
 	return nil
 }
