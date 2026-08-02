@@ -66,3 +66,19 @@ func TestFileStore_SaveDualWrite(t *testing.T) {
 		t.Fatalf("aria2 export missing: %v", err)
 	}
 }
+
+func TestFileStore_LoadMissingSession(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	jsonPath := filepath.Join(dir, "session.json")
+	store := NewFileStore(jsonPath)
+
+	tasks, err := store.Load(context.Background())
+	if err != nil {
+		t.Fatalf("missing session should not error: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("expected no tasks, got %d", len(tasks))
+	}
+}

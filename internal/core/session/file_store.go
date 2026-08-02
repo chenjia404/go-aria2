@@ -63,7 +63,11 @@ func (s *FileStore) Load(ctx context.Context) ([]*task.Task, error) {
 	if companion == "" || companion == s.path {
 		return nil, nil
 	}
-	return s.loadPath(ctx, companion)
+	tasks, err = s.loadPath(ctx, companion)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	return tasks, err
 }
 
 func (s *FileStore) loadPath(ctx context.Context, path string) ([]*task.Task, error) {
