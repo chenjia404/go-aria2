@@ -312,6 +312,44 @@ func apply(cfg *Config, key, value string) error {
 			return err
 		}
 		cfg.BTRemoveUnselectedFile = v
+	case "aria2-compat-mode":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.Aria2CompatMode = v
+	case "file-allocation":
+		cfg.FileAllocation = value
+	case "max-upload-limit":
+		v, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid max-upload-limit: %w", err)
+		}
+		cfg.MaxUploadLimit = v
+	case "connect-timeout":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid connect-timeout: %w", err)
+		}
+		cfg.ConnectTimeout = v
+	case "timeout":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid timeout: %w", err)
+		}
+		cfg.Timeout = v
+	case "retry-wait":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid retry-wait: %w", err)
+		}
+		cfg.RetryWait = v
+	case "force-save":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.ForceSave = v
 	case "save-session":
 		cfg.SaveSession = value
 	case "save-session-interval":

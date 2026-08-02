@@ -29,6 +29,7 @@ var globalDisallowedOptions = map[string]struct{}{
 	"rpc-listen-all":       {},
 	"rpc-secret":           {},
 	"rpc-strict-auth":      {},
+	"aria2-compat-mode":    {},
 	"rpc-allow-origin-all": {},
 	"rpc-max-request-size": {},
 	"enable-websocket":     {},
@@ -88,25 +89,28 @@ func prepareChangeTaskOptions(opts map[string]string) (map[string]string, error)
 }
 
 // prepareChangeGlobalOptions 过滤不可运行时修改的选项并校验全局选项值。
-func prepareChangeGlobalOptions(opts map[string]string) (map[string]string, error) {
+// ignored 返回被静默忽略的键（启动期只读或任务专属选项）。
+func prepareChangeGlobalOptions(opts map[string]string) (filtered map[string]string, ignored []string, err error) {
 	normalizeOptionKeys(opts)
-	filtered := make(map[string]string, len(opts))
+	filtered = make(map[string]string, len(opts))
 	for key, value := range opts {
 		if _, disallowed := globalDisallowedOptions[key]; disallowed {
+			ignored = append(ignored, key)
 			continue
 		}
 		if isTaskOnlyOption(key) {
+			ignored = append(ignored, key)
 			continue
 		}
 		if err := validateKnownOption(key, value); err != nil {
-			return nil, err
+			return nil, ignored, err
 		}
 		filtered[key] = normalizeOptionValue(key, value)
 	}
 	if err := rejectUnimplementedOptions(filtered); err != nil {
-		return nil, err
+		return nil, ignored, err
 	}
-	return filtered, nil
+	return filtered, ignored, nil
 }
 
 // isTaskOnlyOption 标识仅适用于单个下载任务的选项（不应通过 changeGlobalOption 修改）。
@@ -133,7 +137,7 @@ func validateKnownOption(key, value string) error {
 			return optionError(key, value)
 		}
 	case "pause", "allow-overwrite", "auto-file-renaming", "continue", "check-certificate",
-		"check-integrity",
+		"check-integrity", "aria2-compat-mode", "force-save",
 		"enable-dht", "enable-dht6", "bt-enable-lpd", "bt-remove-unselected-file",
 		"bt-detach-seed-only", "bt-save-metadata", "rpc-save-upload-metadata":
 		if !isBoolOption(value) {

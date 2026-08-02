@@ -57,6 +57,13 @@ type Config struct {
 	BTEnableLPD             bool
 	BTDetachSeedOnly        bool
 	BTRemoveUnselectedFile  bool
+	Aria2CompatMode         bool
+	FileAllocation          string
+	MaxUploadLimit          int64
+	ConnectTimeout          int
+	Timeout                 int
+	RetryWait               int
+	ForceSave               bool
 	SaveSession             string
 	SaveSessionInterval     time.Duration
 	ED2KEnable              bool

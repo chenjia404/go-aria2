@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/chenjia404/go-aria2/internal/migrate/aria2session/text"
 )
 
 // FetchAria2SessionTasksFromRPC 从运行中的 aria2 实例拉取任务列表。
@@ -106,14 +108,14 @@ func sessionTaskFromRPC(status map[string]any, options map[string]string) (Aria2
 	if uri == "" {
 		return Aria2SessionTask{}, fmt.Errorf("missing download URI")
 	}
-	opts := cloneMap(options)
+	opts := text.CloneOptions(options)
 	opts["aria2.import.source"] = "aria2-rpc"
 
 	item := Aria2SessionTask{
 		GID:      strings.ToLower(strings.TrimSpace(mapString(status, "gid"))),
 		URI:      uri,
 		Dir:      firstNonEmpty(options["dir"], mapString(status, "dir")),
-		Out:      firstNonEmpty(options["out"], derivePreviewName(uri)),
+		Out:      firstNonEmpty(options["out"], text.DisplayName(Aria2SessionTask{URI: uri})),
 		Checksum: options["checksum"],
 		Metalink: options["metalink"],
 		Options:  opts,

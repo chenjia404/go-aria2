@@ -826,7 +826,7 @@ func (m *Manager) LoadSession(ctx context.Context) error {
 	return m.fillSlots(ctx)
 }
 
-// SaveSession 将当前任务快照写回存储�?
+// SaveSession 将当前任务快照写回存储。
 func (m *Manager) SaveSession(ctx context.Context) error {
 	if m.store == nil {
 		return nil
@@ -834,20 +834,25 @@ func (m *Manager) SaveSession(ctx context.Context) error {
 	return m.store.Save(ctx, m.snapshotTasksForPersist(ctx))
 }
 
-// Close 在退出前持久化一�?session�?
 // SaveSessionTo 将当前任务快照写入指定路径（aria2.saveSession 兼容）。
 func (m *Manager) SaveSessionTo(ctx context.Context, path string) error {
 	if strings.TrimSpace(path) == "" {
 		return m.SaveSession(ctx)
 	}
-	return session.NewFileStore(path).Save(ctx, m.snapshotTasksForPersist(ctx))
+	snapshot := m.snapshotTasksForPersist(ctx)
+	store := session.NewFileStore(path)
+	if fs, ok := m.store.(*session.FileStore); ok && fs.Aria2ExportPath() != "" {
+		store.SetAria2ExportPath(session.CompanionExportPath(path))
+	}
+	return store.Save(ctx, snapshot)
 }
 
+// Close 在退出前持久化一次 session。
 func (m *Manager) Close(ctx context.Context) error {
 	return m.SaveSession(ctx)
 }
 
-// Subscribe 允许上层订阅管理器事件�?
+// Subscribe 允许上层订阅管理器事件。
 func (m *Manager) Subscribe(buffer int) (<-chan Event, func()) {
 	if buffer <= 0 {
 		buffer = 16

@@ -76,6 +76,7 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 		rpcListenAll       bool
 		rpcAllowOriginAll  bool
 		rpcStrictAuth      bool
+		aria2CompatMode    bool
 		enableWebSocket    bool
 		allowOverwrite     bool
 		autoFileRenaming   bool
@@ -127,6 +128,7 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 	fs.IntVar(&rpcListenPort, "rpc-listen-port", 0, "rpc listen port")
 	fs.StringVar(&rpcSecret, "rpc-secret", "", "rpc secret")
 	fs.BoolVar(&rpcStrictAuth, "rpc-strict-auth", false, "require token for all RPC methods including system.*")
+	fs.BoolVar(&aria2CompatMode, "aria2-compat-mode", false, "enable aria2-compatible defaults (strict RPC auth, text save-session export)")
 	fs.BoolVar(&enableWebSocket, "enable-websocket", false, "enable websocket notifications")
 	fs.BoolVar(&allowOverwrite, "allow-overwrite", false, "overwrite existing files")
 	fs.BoolVar(&autoFileRenaming, "auto-file-renaming", false, "auto rename when target exists")
@@ -223,6 +225,8 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 			opts.values["rpc-secret"] = rpcSecret
 		case "rpc-strict-auth":
 			opts.values["rpc-strict-auth"] = rpcStrictAuth
+		case "aria2-compat-mode":
+			opts.values["aria2-compat-mode"] = aria2CompatMode
 		case "enable-websocket":
 			opts.values["enable-websocket"] = enableWebSocket
 		case "allow-overwrite":
@@ -401,6 +405,8 @@ func applyDaemonCLIOptions(cfg *config.Config, opts daemonCLIOptions) error {
 			cfg.RPCSecret = value.(string)
 		case "rpc-strict-auth":
 			cfg.RPCStrictAuth = value.(bool)
+		case "aria2-compat-mode":
+			cfg.Aria2CompatMode = value.(bool)
 		case "enable-websocket":
 			cfg.EnableWebSocket = value.(bool)
 		case "allow-overwrite":

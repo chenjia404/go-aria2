@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -654,9 +655,16 @@ func (s *Service) changeGlobalOption(ctx context.Context, params []any) (any, er
 		return nil, jsonrpc.NewError(jsonrpc.CodeInvalidParams, "options must be an object")
 	}
 
-	filtered, err := prepareChangeGlobalOptions(options)
+	filtered, ignored, err := prepareChangeGlobalOptions(options)
 	if err != nil {
 		return nil, err
+	}
+	for _, key := range ignored {
+		if desc, ok := startupOnlyOptions[key]; ok {
+			log.Printf("[aria2] changeGlobalOption: %q ignored (%s)", key, desc)
+		} else {
+			log.Printf("[aria2] changeGlobalOption: %q ignored (read-only or task-only)", key)
+		}
 	}
 	if len(filtered) == 0 {
 		return s.getGlobalOption(), nil
