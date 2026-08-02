@@ -21,6 +21,21 @@ func optionEnabled(opts map[string]string, key string) bool {
 	}
 }
 
+func (d *Driver) taskOptionEnabled(st *state, key string) bool {
+	if st != nil && optionEnabled(st.options, key) {
+		return true
+	}
+	switch key {
+	case "bt-detach-seed-only":
+		return d.opts.DetachSeedOnly
+	case "bt-remove-unselected-file":
+		return d.opts.RemoveUnselectedFile
+	case "check-integrity":
+		return d.opts.CheckIntegrity
+	}
+	return false
+}
+
 func (d *Driver) handleBTCompletionLocked(st *state, taskID string) {
 	if st == nil || st.torrent == nil || st.completionHandled {
 		return
@@ -30,10 +45,12 @@ func (d *Driver) handleBTCompletionLocked(st *state, taskID string) {
 	}
 	st.completionHandled = true
 
-	if optionEnabled(st.options, "bt-remove-unselected-file") {
-		removeUnselectedFiles(st.torrent, st.selectFile)
+	if d.taskOptionEnabled(st, "bt-remove-unselected-file") {
+		selectFile := st.selectFile
+		tor := st.torrent
+		go removeUnselectedFiles(tor, selectFile)
 	}
-	if optionEnabled(st.options, "bt-detach-seed-only") {
+	if d.taskOptionEnabled(st, "bt-detach-seed-only") {
 		st.sessionDetached = true
 	}
 }
@@ -42,8 +59,7 @@ func (d *Driver) runCheckIntegrityIfNeeded(st *state) {
 	if st == nil || st.torrent == nil {
 		return
 	}
-	check := d.opts.CheckIntegrity || optionEnabled(st.options, "check-integrity")
-	if !check {
+	if !d.taskOptionEnabled(st, "check-integrity") {
 		return
 	}
 	tor := st.torrent

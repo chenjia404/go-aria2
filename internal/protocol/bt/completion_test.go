@@ -39,3 +39,35 @@ func TestSessionDetached(t *testing.T) {
 		t.Fatal("expected not detached for missing task")
 	}
 }
+
+func TestTaskOptionEnabled_DriverDefault(t *testing.T) {
+	t.Parallel()
+
+	d := &Driver{opts: Options{DetachSeedOnly: true}}
+	st := &state{options: map[string]string{}}
+	if !d.taskOptionEnabled(st, "bt-detach-seed-only") {
+		t.Fatal("expected driver default detach-seed-only")
+	}
+	if d.taskOptionEnabled(st, "bt-remove-unselected-file") {
+		t.Fatal("expected remove-unselected false by default")
+	}
+}
+
+func TestDriverCloseStopsRateLimitLoop(t *testing.T) {
+	t.Parallel()
+
+	dataDir := mustTempDir(t)
+	defer removeDirEventually(t, dataDir)
+	driver, err := New(Options{DataDir: dataDir, ListenPort: 0})
+	if err != nil {
+		t.Fatalf("new bt driver: %v", err)
+	}
+	if err := driver.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	select {
+	case <-driver.stopCh:
+	default:
+		t.Fatal("expected stopCh closed after Close")
+	}
+}

@@ -39,6 +39,8 @@ type Options struct {
 	MaxOverallDownloadLimit int64
 	EnableLPD               bool
 	CheckIntegrity          bool
+	DetachSeedOnly          bool
+	RemoveUnselectedFile    bool
 }
 
 type state struct {
@@ -86,6 +88,8 @@ type Driver struct {
 	downloadLimiter *rate.Limiter
 	dhtIPv4Path     string
 	dhtIPv6Path     string
+	stopCh          chan struct{}
+	lpd             *lpdAnnouncer
 }
 
 func buildTorrentConfig(opts Options, listenPort int, uploadLimiter **rate.Limiter, downloadLimiter **rate.Limiter) *torrentlib.ClientConfig {
@@ -187,9 +191,10 @@ func New(opts Options) (*Driver, error) {
 		downloadLimiter: downloadLimiter,
 		dhtIPv4Path:     dhtIPv4,
 		dhtIPv6Path:     dhtIPv6,
+		stopCh:          make(chan struct{}),
 	}
 	go drv.runRateLimitLoop()
-	drv.startLPDIfEnabled()
+	drv.lpd = drv.startLPDIfEnabled()
 	return drv, nil
 }
 
@@ -223,6 +228,8 @@ func (d *Driver) Close() error {
 	}
 	// anacrolix/torrent 关闭时会级联释放底层持久化资源，重复关闭会放大底层锁释放异常。
 	d.closeOnce.Do(func() {
+		d.stopBackground()
+
 		d.mu.Lock()
 		client := d.client
 		d.client = nil
@@ -240,6 +247,21 @@ func (d *Driver) Close() error {
 		d.closeErr = fmt.Errorf("close bt client: %v", errs[0])
 	})
 	return d.closeErr
+}
+
+func (d *Driver) stopBackground() {
+	if d == nil || d.stopCh == nil {
+		return
+	}
+	select {
+	case <-d.stopCh:
+		return
+	default:
+		close(d.stopCh)
+	}
+	if d.lpd != nil {
+		d.lpd.stop()
+	}
 }
 
 // Name 返回驱动名�?
@@ -339,6 +361,9 @@ func (d *Driver) Start(ctx context.Context, taskID string) error {
 	}
 	state.started = true
 	state.paused = false
+	state.rateLimitPausedDL = false
+	state.rateLimitPausedUL = false
+	state.lastRateSampleAt = time.Time{}
 	state.torrent.AllowDataUpload()
 	state.torrent.AllowDataDownload()
 	d.runCheckIntegrityIfNeeded(state)
@@ -563,6 +588,11 @@ func (d *Driver) ChangeOption(ctx context.Context, taskID string, opts map[strin
 		applyBTRateLimiters(st, st.options)
 		st.rateLimitPausedDL = false
 		st.rateLimitPausedUL = false
+		st.lastRateSampleAt = time.Time{}
+		if st.started && !st.paused {
+			st.torrent.AllowDataDownload()
+			st.torrent.AllowDataUpload()
+		}
 		d.mu.Unlock()
 	}
 	return nil
@@ -830,14 +860,6 @@ func (d *Driver) snapshot(forcedStatus task.Status, taskID string) (*task.Task, 
 			item.Meta = map[string]string{}
 		}
 		item.Meta["bt.sessionDetached"] = "true"
-	}
-	if len(state.options) > 0 {
-		if item.Options == nil {
-			item.Options = map[string]string{}
-		}
-		for k, v := range state.options {
-			item.Options[k] = v
-		}
 	}
 
 	switch {

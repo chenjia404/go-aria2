@@ -1,8 +1,6 @@
 package bt
 
 import (
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/chenjia404/go-aria2/internal/protocol/common"
@@ -14,28 +12,24 @@ func applyBTRateLimiters(st *state, opts map[string]string) {
 	}
 	st.downloadLimiter = common.NewTaskDownloadLimiter(opts, nil)
 	st.uploadLimiter = common.NewTaskUploadLimiter(opts, nil)
-}
-
-func parseRateLimitBytes(opts map[string]string, key string) (int64, bool) {
-	if opts == nil {
-		return 0, false
+	if st.downloadLimiter == nil {
+		st.rateLimitPausedDL = false
 	}
-	raw, ok := opts[key]
-	if !ok {
-		return 0, false
+	if st.uploadLimiter == nil {
+		st.rateLimitPausedUL = false
 	}
-	parsed, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	return parsed, true
 }
 
 func (d *Driver) runRateLimitLoop() {
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
-	for range ticker.C {
-		d.enforceTaskRateLimits()
+	for {
+		select {
+		case <-d.stopCh:
+			return
+		case <-ticker.C:
+			d.enforceTaskRateLimits()
+		}
 	}
 }
 
@@ -65,34 +59,70 @@ func (d *Driver) enforceTaskRateLimits() {
 
 		deltaRead := readBytes - st.lastRateBytesRead
 		deltaWrite := writeBytes - st.lastRateBytesWrite
+		if deltaRead < 0 {
+			deltaRead = 0
+		}
+		if deltaWrite < 0 {
+			deltaWrite = 0
+		}
 		st.lastRateSampleAt = now
 		st.lastRateBytesRead = readBytes
 		st.lastRateBytesWrite = writeBytes
 
-		if st.downloadLimiter != nil && deltaRead > 0 {
-			if !st.downloadLimiter.TryConsume(deltaRead) {
-				if !st.rateLimitPausedDL {
-					st.rateLimitPausedDL = true
-					st.torrent.DisallowDataDownload()
-				}
-			} else if st.rateLimitPausedDL {
-				st.rateLimitPausedDL = false
-				st.torrent.AllowDataDownload()
-			}
-		}
-
-		if st.uploadLimiter != nil && deltaWrite > 0 {
-			if !st.uploadLimiter.TryConsume(deltaWrite) {
-				if !st.rateLimitPausedUL {
-					st.rateLimitPausedUL = true
-					st.torrent.DisallowDataUpload()
-				}
-			} else if st.rateLimitPausedUL {
-				st.rateLimitPausedUL = false
-				st.torrent.AllowDataUpload()
-			}
-		}
-
+		d.enforceDownloadRateLimit(st, deltaRead)
+		d.enforceUploadRateLimit(st, deltaWrite)
 		d.handleBTCompletionLocked(st, taskID)
+	}
+}
+
+func (d *Driver) enforceDownloadRateLimit(st *state, deltaRead int64) {
+	if st == nil || st.torrent == nil {
+		return
+	}
+	if st.downloadLimiter == nil {
+		if st.rateLimitPausedDL {
+			st.rateLimitPausedDL = false
+			st.torrent.AllowDataDownload()
+		}
+		return
+	}
+	if deltaRead > 0 {
+		if !st.downloadLimiter.TryConsume(deltaRead) {
+			if !st.rateLimitPausedDL {
+				st.rateLimitPausedDL = true
+				st.torrent.DisallowDataDownload()
+			}
+			return
+		}
+	}
+	if st.rateLimitPausedDL && st.downloadLimiter.CanAfford(1) {
+		st.rateLimitPausedDL = false
+		st.torrent.AllowDataDownload()
+	}
+}
+
+func (d *Driver) enforceUploadRateLimit(st *state, deltaWrite int64) {
+	if st == nil || st.torrent == nil {
+		return
+	}
+	if st.uploadLimiter == nil {
+		if st.rateLimitPausedUL {
+			st.rateLimitPausedUL = false
+			st.torrent.AllowDataUpload()
+		}
+		return
+	}
+	if deltaWrite > 0 {
+		if !st.uploadLimiter.TryConsume(deltaWrite) {
+			if !st.rateLimitPausedUL {
+				st.rateLimitPausedUL = true
+				st.torrent.DisallowDataUpload()
+			}
+			return
+		}
+	}
+	if st.rateLimitPausedUL && st.uploadLimiter.CanAfford(1) {
+		st.rateLimitPausedUL = false
+		st.torrent.AllowDataUpload()
 	}
 }

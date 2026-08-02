@@ -39,6 +39,24 @@ func (l *ByteLimiter) SetRate(rate int64) {
 	}
 }
 
+// CanAfford 刷新令牌后检查是否有至少 n 字节额度（不扣减）。
+func (l *ByteLimiter) CanAfford(n int64) bool {
+	if l == nil || n <= 0 {
+		return true
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	if elapsed := now.Sub(l.lastFill).Seconds(); elapsed > 0 {
+		l.tokens += elapsed * float64(l.rate)
+		if l.tokens > float64(l.rate) {
+			l.tokens = float64(l.rate)
+		}
+		l.lastFill = now
+	}
+	return l.tokens >= float64(n)
+}
+
 // TryConsume 非阻塞尝试消费 n 字节；令牌不足时返回 false 且不扣减。
 func (l *ByteLimiter) TryConsume(n int64) bool {
 	if l == nil || n <= 0 {

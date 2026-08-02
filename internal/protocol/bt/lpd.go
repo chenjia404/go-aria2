@@ -20,25 +20,23 @@ const (
 )
 
 type lpdAnnouncer struct {
-	mu       sync.Mutex
-	driver   *Driver
-	conn     *net.UDPConn
-	stopCh   chan struct{}
-	peerID   [20]byte
+	mu         sync.Mutex
+	driver     *Driver
+	conn       *net.UDPConn
+	stopCh     chan struct{}
+	stopOnce   sync.Once
+	peerID     [20]byte
 	listenPort int
 }
 
-func (d *Driver) startLPDIfEnabled() {
+func (d *Driver) startLPDIfEnabled() *lpdAnnouncer {
 	if d == nil || !d.opts.EnableLPD {
-		return
+		return nil
 	}
 	port := effectiveListenPort(d.opts)
 	if port <= 0 {
-		if d.client != nil {
-			// 动态端口时从 client 获取实际监听端口较复杂，跳过 LPD 宣告。
-			log.Printf("[bt] bt-enable-lpd: listen-port unknown, LPD disabled")
-		}
-		return
+		log.Printf("[bt] bt-enable-lpd: listen-port unknown, LPD disabled")
+		return nil
 	}
 	a := &lpdAnnouncer{
 		driver:     d,
@@ -47,9 +45,19 @@ func (d *Driver) startLPDIfEnabled() {
 	}
 	if _, err := rand.Read(a.peerID[:]); err != nil {
 		log.Printf("[bt] bt-enable-lpd: generate peer id: %v", err)
-		return
+		return nil
 	}
 	go a.run()
+	return a
+}
+
+func (a *lpdAnnouncer) stop() {
+	if a == nil {
+		return
+	}
+	a.stopOnce.Do(func() {
+		close(a.stopCh)
+	})
 }
 
 func (a *lpdAnnouncer) run() {
@@ -86,6 +94,7 @@ func (a *lpdAnnouncer) run() {
 func (a *lpdAnnouncer) receiveLoop(conn *net.UDPConn) {
 	buf := make([]byte, 512)
 	for {
+		_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 		n, remote, err := conn.ReadFromUDP(buf)
 		if err != nil {
 			select {
@@ -110,7 +119,6 @@ func (a *lpdAnnouncer) handlePacket(pkt []byte, remote *net.UDPAddr) {
 	port := int(binary.BigEndian.Uint16(pkt[len(lpdMagic)+20:]))
 
 	a.driver.mu.RLock()
-	client := a.driver.client
 	tasks := make([]*torrentlib.Torrent, 0, len(a.driver.tasks))
 	for _, st := range a.driver.tasks {
 		if st != nil && st.torrent != nil && !st.removed {
@@ -119,9 +127,6 @@ func (a *lpdAnnouncer) handlePacket(pkt []byte, remote *net.UDPAddr) {
 	}
 	a.driver.mu.RUnlock()
 
-	if client == nil {
-		return
-	}
 	var hash torrentlib.InfoHash
 	copy(hash[:], infoHash)
 	for _, tor := range tasks {
@@ -179,8 +184,4 @@ func (a *lpdAnnouncer) announceTorrent(tor *torrentlib.Torrent) {
 		return
 	}
 	_, _ = conn.WriteToUDP(pkt, addr)
-}
-
-func (d *Driver) stopLPD() {
-	// LPD goroutine 随进程退出；Close 时 client 已关闭，无需额外清理。
 }
