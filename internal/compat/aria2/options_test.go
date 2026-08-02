@@ -231,4 +231,7 @@ func TestIsValidURI(t *testing.T) {
 	if !isValidURI("sftp://example.com/a") {
 		t.Fatal("expected sftp uri to be valid")
 	}
+	if !isValidURI("file:///tmp/sample.bin") {
+		t.Fatal("expected file uri to be valid")
+	}
 }

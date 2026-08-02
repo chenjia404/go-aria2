@@ -2,10 +2,10 @@ package aria2
 
 import (
 	"context"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,37 +15,67 @@ import (
 )
 
 // 验证 WebSocket 能收到与 aria2 一致的任务生命周期通知。
+//
+// 连接建立后立即启动后台读协程，避免服务端 WriteMessage 因客户端未读而阻塞；
+// 同包大量 t.Parallel 用例并发时易在 CI 上争抢 CPU，因此 WebSocket 测试串行执行。
 
-// readWSUntil 在超时前持续读取 WebSocket 消息，直到 match 返回 true。
-// gorilla/websocket 在 ReadJSON 失败后不可重复读取同一连接，因此不能在超时后 continue 重试。
-// 每收到一条非匹配消息会刷新读超时，避免先到的 onDownloadStart 等通知耗尽总等待时间。
-func readWSUntil(t *testing.T, conn *websocket.Conn, timeout time.Duration, match func(msg map[string]any) bool) {
+const wsNotifyTimeout = 15 * time.Second
+
+var wsNotifyTestMu sync.Mutex
+
+type wsNotifyReader struct {
+	msgs  chan map[string]any
+	errCh chan error
+}
+
+func startWSNotifyReader(conn *websocket.Conn) *wsNotifyReader {
+	r := &wsNotifyReader{
+		msgs:  make(chan map[string]any, 32),
+		errCh: make(chan error, 1),
+	}
+	go func() {
+		for {
+			var msg map[string]any
+			if err := conn.ReadJSON(&msg); err != nil {
+				select {
+				case r.errCh <- err:
+				default:
+				}
+				return
+			}
+			r.msgs <- msg
+		}
+	}()
+	// 给读协程时间进入 ReadJSON，避免首条通知在客户端尚未读时阻塞服务端写。
+	time.Sleep(20 * time.Millisecond)
+	return r
+}
+
+func (r *wsNotifyReader) waitMatch(t *testing.T, timeout time.Duration, match func(map[string]any) bool) {
 	t.Helper()
+
 	deadline := time.Now().Add(timeout)
 	for {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
 			t.Fatal("websocket notification not received before timeout")
 		}
-		if err := conn.SetReadDeadline(time.Now().Add(remaining)); err != nil {
-			t.Fatalf("set read deadline: %v", err)
-		}
-		var msg map[string]any
-		err := conn.ReadJSON(&msg)
-		if err != nil {
-			if ne, ok := err.(net.Error); ok && ne.Timeout() {
-				t.Fatal("websocket notification not received before timeout")
+		select {
+		case msg := <-r.msgs:
+			if match(msg) {
+				return
 			}
+		case err := <-r.errCh:
 			t.Fatalf("websocket read: %v", err)
-		}
-		if match(msg) {
-			return
+		case <-time.After(remaining):
+			t.Fatal("websocket notification not received before timeout")
 		}
 	}
 }
 
 func TestWebSocketNotification_OnDownloadPause(t *testing.T) {
-	t.Parallel()
+	wsNotifyTestMu.Lock()
+	defer wsNotifyTestMu.Unlock()
 
 	mgr := manager.New(manager.Options{DefaultDir: t.TempDir()})
 	driver := newRPCStubDriver()
@@ -70,6 +100,7 @@ func TestWebSocketNotification_OnDownloadPause(t *testing.T) {
 		t.Fatalf("dial: %v", err)
 	}
 	defer conn.Close()
+	reader := startWSNotifyReader(conn)
 
 	gid, err := svc.Invoke(context.Background(), "aria2.addUri", []any{
 		[]any{"http://example.com/ws-notify"},
@@ -83,15 +114,14 @@ func TestWebSocketNotification_OnDownloadPause(t *testing.T) {
 	if _, err := svc.Invoke(context.Background(), "aria2.unpause", []any{gidStr}); err != nil {
 		t.Fatalf("unpause: %v", err)
 	}
-	readWSUntil(t, conn, 5*time.Second, func(msg map[string]any) bool {
+	reader.waitMatch(t, wsNotifyTimeout, func(msg map[string]any) bool {
 		return msg["method"] == "aria2.onDownloadStart"
 	})
 
 	if _, err := svc.Invoke(context.Background(), "aria2.pause", []any{gidStr}); err != nil {
 		t.Fatalf("pause: %v", err)
 	}
-
-	readWSUntil(t, conn, 5*time.Second, func(msg map[string]any) bool {
+	reader.waitMatch(t, wsNotifyTimeout, func(msg map[string]any) bool {
 		if msg["method"] != "aria2.onDownloadPause" {
 			return false
 		}
@@ -105,7 +135,8 @@ func TestWebSocketNotification_OnDownloadPause(t *testing.T) {
 }
 
 func TestWebSocketNotification_AddPausedSkipsStart(t *testing.T) {
-	t.Parallel()
+	wsNotifyTestMu.Lock()
+	defer wsNotifyTestMu.Unlock()
 
 	mgr := manager.New(manager.Options{DefaultDir: t.TempDir(), StartPaused: true})
 	driver := newRPCStubDriver()
@@ -130,6 +161,7 @@ func TestWebSocketNotification_AddPausedSkipsStart(t *testing.T) {
 		t.Fatalf("dial: %v", err)
 	}
 	defer conn.Close()
+	reader := startWSNotifyReader(conn)
 
 	if _, err := svc.Invoke(context.Background(), "aria2.addUri", []any{
 		[]any{"http://example.com/paused-add"},
@@ -138,17 +170,18 @@ func TestWebSocketNotification_AddPausedSkipsStart(t *testing.T) {
 		t.Fatalf("addUri: %v", err)
 	}
 
-	_ = conn.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
-	var msg map[string]any
-	if err := conn.ReadJSON(&msg); err == nil {
+	select {
+	case msg := <-reader.msgs:
 		if msg["method"] == "aria2.onDownloadStart" {
 			t.Fatalf("paused add should not emit onDownloadStart: %#v", msg)
 		}
+	case <-time.After(300 * time.Millisecond):
 	}
 }
 
 func TestWebSocketNotification_OnDownloadStart(t *testing.T) {
-	t.Parallel()
+	wsNotifyTestMu.Lock()
+	defer wsNotifyTestMu.Unlock()
 
 	mgr := manager.New(manager.Options{DefaultDir: t.TempDir(), MaxConcurrent: 3})
 	driver := newRPCStubDriver()
@@ -173,6 +206,7 @@ func TestWebSocketNotification_OnDownloadStart(t *testing.T) {
 		t.Fatalf("dial: %v", err)
 	}
 	defer conn.Close()
+	reader := startWSNotifyReader(conn)
 
 	gid, err := svc.Invoke(context.Background(), "aria2.addUri", []any{
 		[]any{"http://example.com/ws-start"},
@@ -186,8 +220,7 @@ func TestWebSocketNotification_OnDownloadStart(t *testing.T) {
 	if _, err := svc.Invoke(context.Background(), "aria2.unpause", []any{gidStr}); err != nil {
 		t.Fatalf("unpause: %v", err)
 	}
-
-	readWSUntil(t, conn, 5*time.Second, func(msg map[string]any) bool {
+	reader.waitMatch(t, wsNotifyTimeout, func(msg map[string]any) bool {
 		if msg["method"] != "aria2.onDownloadStart" {
 			return false
 		}
@@ -201,7 +234,8 @@ func TestWebSocketNotification_OnDownloadStart(t *testing.T) {
 }
 
 func TestWebSocketNotification_OnDownloadStop(t *testing.T) {
-	t.Parallel()
+	wsNotifyTestMu.Lock()
+	defer wsNotifyTestMu.Unlock()
 
 	mgr := manager.New(manager.Options{DefaultDir: t.TempDir()})
 	driver := newRPCStubDriver()
@@ -226,6 +260,7 @@ func TestWebSocketNotification_OnDownloadStop(t *testing.T) {
 		t.Fatalf("dial: %v", err)
 	}
 	defer conn.Close()
+	reader := startWSNotifyReader(conn)
 
 	gid, err := svc.Invoke(context.Background(), "aria2.addUri", []any{
 		[]any{"http://example.com/ws-stop"},
@@ -239,8 +274,7 @@ func TestWebSocketNotification_OnDownloadStop(t *testing.T) {
 	if _, err := svc.Invoke(context.Background(), "aria2.remove", []any{gidStr}); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
-
-	readWSUntil(t, conn, 5*time.Second, func(msg map[string]any) bool {
+	reader.waitMatch(t, wsNotifyTimeout, func(msg map[string]any) bool {
 		if msg["method"] != "aria2.onDownloadStop" {
 			return false
 		}

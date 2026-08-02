@@ -68,7 +68,7 @@ func entryToTask(item Entry) (*task.Task, error) {
 	if t.Protocol == task.ProtocolED2K {
 		t.Meta["ed2k.import"] = "true"
 	}
-	if t.Protocol == task.ProtocolHTTP {
+	if t.Protocol == task.ProtocolHTTP || t.Protocol == task.Protocol("file") {
 		t.Files = []task.File{{
 			Index:    0,
 			Path:     filepath.Join(saveDir, name),
@@ -91,6 +91,8 @@ func routeKind(uri string) (task.Protocol, error) {
 			return task.ProtocolBT, nil
 		}
 		return task.ProtocolHTTP, nil
+	case strings.HasPrefix(lower, "file://"):
+		return task.Protocol("file"), nil
 	default:
 		return "", fmt.Errorf("unsupported aria2 session uri: %s", uri)
 	}

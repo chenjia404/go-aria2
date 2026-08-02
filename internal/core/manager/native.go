@@ -216,6 +216,14 @@ func addInputFromStoredTask(stored *task.Task) (task.AddTaskInput, error) {
 		default:
 			return task.AddTaskInput{}, fmt.Errorf("unsupported bt session source for import")
 		}
+	case task.Protocol("file"):
+		if uri := strings.TrimSpace(stored.Meta["file.sourceURI"]); uri != "" {
+			input.URI = uri
+		} else if len(stored.Files) > 0 && len(stored.Files[0].URIs) > 0 {
+			input.URI = stored.Files[0].URIs[0]
+		} else {
+			return task.AddTaskInput{}, fmt.Errorf("file task has no URI to import")
+		}
 	case task.ProtocolHTTP:
 		seen := map[string]struct{}{}
 		for _, file := range stored.Files {

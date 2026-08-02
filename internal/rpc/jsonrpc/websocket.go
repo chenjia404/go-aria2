@@ -62,7 +62,7 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	prev := make(map[string]taskSnap)
-	evCh, unsub := cfg.Manager.Subscribe(32)
+	evCh, unsub := cfg.Manager.Subscribe(256)
 	defer unsub()
 	defer conn.Close()
 

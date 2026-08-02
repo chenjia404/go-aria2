@@ -731,13 +731,13 @@ func multicallErrorFromErr(err error) map[string]any {
 // releaseDate 与构建版本对齐，避免每次 RPC 调用返回值变化（aria2 为固定发布日期）。
 const releaseDate = "2026-07-30"
 
-var supportedProtocolsAll = []string{"bt", "ed2k", "ftp", "http", "https", "magnet", "sftp"}
+var supportedProtocolsAll = []string{"bt", "ed2k", "file", "ftp", "http", "https", "magnet", "sftp"}
 
 func buildEnabledProtocols(ed2kEnabled bool) []string {
 	if ed2kEnabled {
-		return []string{"bt", "ed2k", "ftp", "http", "https", "sftp"}
+		return []string{"bt", "ed2k", "file", "ftp", "http", "https", "sftp"}
 	}
-	return []string{"bt", "ftp", "http", "https", "sftp"}
+	return []string{"bt", "file", "ftp", "http", "https", "sftp"}
 }
 
 func (s *Service) getVersion() map[string]any {

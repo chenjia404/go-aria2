@@ -1,6 +1,8 @@
 package aria2
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/chenjia404/go-aria2/internal/core/manager"
@@ -63,13 +65,14 @@ func TestValidateAddURIScheme(t *testing.T) {
 		"magnet:?xt=urn:btih:abc",
 		"ftp://example.com/a",
 		"sftp://example.com/a",
+		"file:///tmp/sample.bin",
 	} {
 		if err := validateAddURIScheme(uri); err != nil {
 			t.Fatalf("%q should be supported: %v", uri, err)
 		}
 	}
 
-	for _, uri := range []string{"not uri", "file:///local"} {
+	for _, uri := range []string{"not uri", "gopher://example.com/a"} {
 		if err := validateAddURIScheme(uri); err == nil {
 			t.Fatalf("%q should be rejected", uri)
 		}
@@ -83,6 +86,22 @@ func TestRpcMethod_AddUri_FtpSchemeAccepted(t *testing.T) {
 	gid := env.MustGID("aria2.addUri", []any{"ftp://example.com/a.bin"}, map[string]any{"pause": "true"})
 	if gid == "" {
 		t.Fatal("expected gid for ftp uri")
+	}
+}
+
+func TestRpcMethod_AddUri_FileSchemeAccepted(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "sample.bin")
+	if err := os.WriteFile(src, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	env := newRPCTestEnv(t, manager.Options{})
+	gid := env.MustGID("aria2.addUri", []any{"file://" + src}, map[string]any{"pause": "true", "dir": dir})
+	if gid == "" {
+		t.Fatal("expected gid for file uri")
 	}
 }
 

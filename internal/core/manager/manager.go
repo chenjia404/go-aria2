@@ -1469,10 +1469,7 @@ func (m *Manager) emit(eventType EventType, item *task.Task) {
 	m.subMu.RLock()
 	defer m.subMu.RUnlock()
 	for _, ch := range m.subscribers {
-		select {
-		case ch <- event:
-		default:
-		}
+		ch <- event
 	}
 }
 

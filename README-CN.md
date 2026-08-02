@@ -321,7 +321,7 @@ ed2k-upload-slots=3
 - `tellStatus` 中的数值字段按字符串序列化
 - 支持 `token:xxx` 形式的鉴权参数
 - 默认模式下 `system.listMethods` / `system.listNotifications` / `system.multicall` 可免 token；设置 **`rpc-strict-auth=true`** 后与 aria2 一致，所有方法均需 token
-- `addUri` 支持 `http`/`https`/`ftp`/`sftp`/`ed2k`/`magnet`；其他 scheme 返回 `Unsupported URI scheme`
+- `addUri` 支持 `http`/`https`/`ftp`/`sftp`/`ed2k`/`magnet`/`file`；其他 scheme 返回 `Unsupported URI scheme`
 - `file-allocation`（`none`/`trunc`/`prealloc`/`falloc`）、`index-out` 已在 HTTP/FTP/SFTP/BT 驱动落地；`changeOption` 更新 `index-out` 时同步输出路径
 - `connect-timeout`、`timeout` 在 HTTP 驱动生效；`connect-timeout` 亦用于 FTP/SFTP 连接
 - `continue`、`allow-overwrite` 在 HTTP/FTP/SFTP 驱动生效

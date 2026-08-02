@@ -72,6 +72,20 @@ func TestAria2NotificationsForEvent_PauseAndResume(t *testing.T) {
 	}
 }
 
+func TestAria2NotificationsForEvent_ActiveWithoutPriorState(t *testing.T) {
+	t.Parallel()
+
+	prev := map[string]taskSnap{}
+	ev := manager.Event{
+		Type: manager.EventTaskUpdated,
+		Task: &task.Task{GID: "gid-missed-add", Status: task.StatusActive},
+	}
+	got := aria2NotificationsForEvent(ev, prev)
+	if len(got) != 1 || got[0]["method"] != "aria2.onDownloadStart" {
+		t.Fatalf("active without prior state should still notify start: %#v", got)
+	}
+}
+
 func TestAria2NotificationsForEvent_RemoveStops(t *testing.T) {
 	t.Parallel()
 

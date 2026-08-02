@@ -98,7 +98,7 @@
 | `bt-request-peer-speed-limit` | **已实现**：下载速度低于阈值或尚无 peer 时触发 DHT 增连 |
 | 其他未列出键 | 可能被接受并存储，但不保证驱动层生效 |
 
-`addUri` 支持的 scheme：`http`、`https`、`ftp`、`sftp`、`ed2k`、`magnet`。其他 scheme 返回 `Unsupported URI scheme`（`-32602`）。
+`addUri` 支持的 scheme：`http`、`https`、`ftp`、`sftp`、`ed2k`、`magnet`、`file`。其他 scheme 返回 `Unsupported URI scheme`（`-32602`）。
 
 `changeUri` 支持 HTTP(S)、BT web seed、FTP、SFTP、ED2K。
 
