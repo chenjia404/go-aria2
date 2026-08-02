@@ -98,7 +98,7 @@ Common keys include: `dir`, `pause`, `max-concurrent-downloads`, `http-user-agen
 | `bt-request-peer-speed-limit` | **Implemented**: DHT peer boost when download speed is below threshold or no peers |
 | Other keys | May be stored without driver semantics |
 
-`addUri` schemes: `http`, `https`, `ftp`, `sftp`, `ed2k`, `magnet`. Other schemes return `Unsupported URI scheme` (`-32602`).
+`addUri` schemes: `http`, `https`, `ftp`, `sftp`, `ed2k`, `magnet`, `file`. Other schemes return `Unsupported URI scheme` (`-32602`).
 
 `changeUri` supports HTTP(S), BT web seeds, FTP, SFTP, and ED2K.
 

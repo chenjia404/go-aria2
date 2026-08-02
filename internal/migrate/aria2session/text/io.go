@@ -138,7 +138,7 @@ func taskSourceURI(item *task.Task) string {
 	if item == nil {
 		return ""
 	}
-	for _, key := range []string{"bt.source.uri", "http.sourceURL", "ed2k.sourceURI", "ftp.sourceURL"} {
+	for _, key := range []string{"bt.source.uri", "http.sourceURL", "ed2k.sourceURI", "ftp.sourceURL", "file.sourceURI"} {
 		if u := strings.TrimSpace(item.Meta[key]); u != "" {
 			return u
 		}

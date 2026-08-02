@@ -9,6 +9,7 @@ import (
 
 // supportedAddURISchemes 与 getVersion.supportedProtocols 对齐的 addUri scheme。
 var supportedAddURISchemes = map[string]struct{}{
+	"file":  {},
 	"ftp":   {},
 	"http":  {},
 	"https": {},

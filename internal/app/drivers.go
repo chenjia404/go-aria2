@@ -9,6 +9,7 @@ import (
 	"github.com/chenjia404/go-aria2/internal/protocol/ed2k"
 	"github.com/chenjia404/go-aria2/internal/protocol/ftp"
 	"github.com/chenjia404/go-aria2/internal/protocol/httpdl"
+	"github.com/chenjia404/go-aria2/internal/protocol/localfile"
 	sftpproto "github.com/chenjia404/go-aria2/internal/protocol/sftpproto"
 )
 
@@ -71,6 +72,7 @@ func registerProtocolDrivers(mgr *manager.Manager, cfg *config.Config, paths run
 		out.ED2K = ed2kDriver
 	}
 
+	mgr.RegisterDriver(localfile.New())
 	mgr.RegisterDriver(ftp.New(ftp.Options{
 		MaxOverallDownloadLimit: cfg.MaxOverallDownloadLimit,
 	}))

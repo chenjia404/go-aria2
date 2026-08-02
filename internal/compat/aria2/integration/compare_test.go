@@ -10,6 +10,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -782,16 +784,27 @@ func TestCompareAria2_SaveSession(t *testing.T) {
 	}
 }
 
-func TestGoAria2_UnsupportedURIScheme(t *testing.T) {
+func TestGoAria2_FileURIAccepted(t *testing.T) {
 	work := t.TempDir()
-	secret := "compare-unsupported-uri"
+	secret := "compare-file-uri"
 	goAria := startGoAria2Daemon(t, work, freeListenPort(t), secret)
 	ctx := context.Background()
 
-	if _, err := goAria.call(ctx, "aria2.addUri", []any{[]any{"file:///etc/passwd"}}); err == nil {
-		t.Fatal("go-aria2 should reject file URI")
-	} else if !strings.Contains(err.Error(), "Unsupported URI scheme") {
-		t.Fatalf("unexpected error: %v", err)
+	src := filepath.Join(work, "source.bin")
+	if err := os.WriteFile(src, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	downloadDir := filepath.Join(work, "downloads")
+	if err := os.MkdirAll(downloadDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	gid := mustString(t, mustCallSlice(t, ctx, goAria, "aria2.addUri", []any{
+		[]any{"file://" + src},
+		map[string]any{"dir": downloadDir, "pause": "true"},
+	}), "addUri file://")
+	if gid == "" {
+		t.Fatal("expected gid")
 	}
 }
 
