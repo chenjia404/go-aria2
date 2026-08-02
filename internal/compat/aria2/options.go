@@ -133,6 +133,7 @@ func validateKnownOption(key, value string) error {
 			return optionError(key, value)
 		}
 	case "pause", "allow-overwrite", "auto-file-renaming", "continue", "check-certificate",
+		"check-integrity",
 		"enable-dht", "enable-dht6", "bt-enable-lpd", "bt-remove-unselected-file",
 		"bt-detach-seed-only", "bt-save-metadata", "rpc-save-upload-metadata":
 		if !isBoolOption(value) {

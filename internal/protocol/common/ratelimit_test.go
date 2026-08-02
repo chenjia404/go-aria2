@@ -54,3 +54,41 @@ func TestNewTaskDownloadLimiter(t *testing.T) {
 		t.Fatal("expected standalone limiter without base")
 	}
 }
+
+func TestByteLimiter_TryConsume(t *testing.T) {
+	t.Parallel()
+
+	limiter := NewByteLimiter(1000)
+	if !limiter.TryConsume(500) {
+		t.Fatal("expected consume 500")
+	}
+	if !limiter.TryConsume(500) {
+		t.Fatal("expected consume remaining 500")
+	}
+	if limiter.TryConsume(1) {
+		t.Fatal("expected insufficient tokens")
+	}
+}
+
+func TestByteLimiter_CanAfford(t *testing.T) {
+	t.Parallel()
+
+	limiter := NewByteLimiter(1000)
+	if !limiter.CanAfford(500) {
+		t.Fatal("expected afford 500")
+	}
+	if !limiter.TryConsume(1000) {
+		t.Fatal("expected consume all tokens")
+	}
+	if limiter.CanAfford(1) {
+		t.Fatal("expected no tokens after full consume")
+	}
+}
+
+func TestNewTaskUploadLimiter(t *testing.T) {
+	t.Parallel()
+
+	if got := NewTaskUploadLimiter(map[string]string{"max-upload-limit": "2048"}, nil); got == nil {
+		t.Fatal("expected upload limiter")
+	}
+}

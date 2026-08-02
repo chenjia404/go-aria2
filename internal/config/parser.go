@@ -288,6 +288,30 @@ func apply(cfg *Config, key, value string) error {
 			return err
 		}
 		cfg.CheckCertificate = v
+	case "check-integrity":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.CheckIntegrity = v
+	case "bt-enable-lpd":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.BTEnableLPD = v
+	case "bt-detach-seed-only":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.BTDetachSeedOnly = v
+	case "bt-remove-unselected-file":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.BTRemoveUnselectedFile = v
 	case "save-session":
 		cfg.SaveSession = value
 	case "save-session-interval":

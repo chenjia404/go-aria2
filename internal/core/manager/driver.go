@@ -34,6 +34,11 @@ type LocalStatePurger interface {
 	PurgeLocalState(taskID string)
 }
 
+// SessionDetachedChecker 可选实现：返回任务是否应从 session 持久化中排除（bt-detach-seed-only）。
+type SessionDetachedChecker interface {
+	SessionDetached(taskID string) bool
+}
+
 // PeerInfo 描述 aria2 getPeers 需要的统一 peer 视图�?
 type PeerInfo struct {
 	PeerID        string

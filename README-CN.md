@@ -327,9 +327,13 @@ ed2k-upload-slots=3
 - `continue`、`allow-overwrite` 在 HTTP/FTP/SFTP 驱动生效
 - `retry-wait` 在 HTTP/FTP/SFTP 镜像切换前等待
 - `checksum` 在 `addUri`/`changeOption` 时校验格式；HTTP 下载完成后校验
-- `max-download-limit` 在 HTTP/FTP/SFTP 驱动生效；BT 仅存储
-- `bt-max-peers` 支持任务级 `changeOption` 热更新（`SetMaxEstablishedConns`）
-- `max-upload-limit`、`bt-request-peer-speed-limit` 等见 `storeOnlyOptions`（仅存储）
+- `max-download-limit` 在 HTTP/FTP/SFTP/BT 驱动生效（BT 通过任务级令牌桶限速）
+- `max-upload-limit` 在 BT 驱动生效（任务级上传限速）
+- `bt-enable-lpd` 启用 BEP-14 局域网 Peer 发现（组播）
+- `bt-detach-seed-only` 做种任务完成后从 session 持久化中分离，仍继续做种
+- `bt-remove-unselected-file` 下载完成后删除未选中的文件
+- `check-integrity` 在 BT 启动时校验已有分块（全局或任务级）
+- `bt-request-peer-speed-limit` 等见 `storeOnlyOptions`（仅存储）
 - `seed-ratio`、`seed-time` 支持任务级覆盖全局 BT 做种策略
 - `getVersion.enabledProtocols` 随 `ed2k-enable` 动态变化；`supportedProtocols` 含 `magnet`
 - `changeUri` 支持 HTTP(S)、BT（web seed）、FTP、SFTP、ED2K 任务
@@ -411,7 +415,7 @@ go test ./internal/compat/aria2/...
 ## 已知限制
 
 - 不是 aria2 的完整替代品，协议与选项语义仍在逐步对齐。
-- 部分 aria2 高级选项（如 HTTP pipelining、实时分块校验）尚未实现。
+- 部分 aria2 高级选项（如 HTTP pipelining、实时分块校验、`bt-request-peer-speed-limit`）尚未实现。
 - BT 严格恢复依赖 torrent 元数据可用。
 - ED2K 的完整恢复能力仍在扩展中。
 

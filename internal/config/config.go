@@ -53,6 +53,10 @@ type Config struct {
 	MaxConnectionPerServer  int
 	Split                   int
 	CheckCertificate        bool
+	CheckIntegrity          bool
+	BTEnableLPD             bool
+	BTDetachSeedOnly        bool
+	BTRemoveUnselectedFile  bool
 	SaveSession             string
 	SaveSessionInterval     time.Duration
 	ED2KEnable              bool

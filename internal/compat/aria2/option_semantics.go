@@ -12,11 +12,6 @@ var unimplementedOptions = map[string]struct{}{}
 // storeOnlyOptions 记录已接受并存储、但运行时语义未完整实现的选项（供审计与文档引用，不触发拒绝）。
 var storeOnlyOptions = map[string]string{
 	"bt-request-peer-speed-limit": "BT peer 请求限速（仅存储）",
-	"bt-enable-lpd":               "BT LPD（仅存储）",
-	"bt-remove-unselected-file":   "BT 删除未选文件（仅存储）",
-	"bt-detach-seed-only":         "BT 仅分离做种（仅存储）",
-	"max-upload-limit":            "任务级上传限速（BT 等协议仅存储；全局限速用 max-overall-upload-limit）",
-	"max-download-limit":          "任务级下载限速（BT 仅存储；HTTP/FTP/SFTP 已实现）",
 }
 
 // startupOnlyOptions 仅 daemon 启动配置生效，changeGlobalOption 写入后静默忽略（见 globalDisallowedOptions）。
