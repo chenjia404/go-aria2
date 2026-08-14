@@ -14,7 +14,7 @@ const (
 func resolveBTMaxPeers(opts map[string]string, defaultPeers int) int {
 	if opts != nil {
 		if raw, ok := opts["bt-max-peers"]; ok {
-			if n, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil && n > 0 {
+			if n, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil && n >= 0 {
 				return n
 			}
 		}

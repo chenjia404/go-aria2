@@ -41,7 +41,7 @@ func Parse(r io.Reader) (*Config, error) {
 		}
 
 		key = strings.ToLower(strings.TrimSpace(key))
-		value = strings.TrimSpace(value)
+		value = SanitizeConfigValue(value)
 
 		if err := apply(cfg, key, value); err != nil {
 			return nil, fmt.Errorf("line %d: %w", lineNo, err)
@@ -81,7 +81,7 @@ func apply(cfg *Config, key, value string) error {
 		}
 		cfg.RPCAllowOriginAll = v
 	case "rpc-max-request-size":
-		v, err := strconv.ParseInt(value, 10, 64)
+		v, err := parseSpeedBytes(value)
 		if err != nil {
 			return fmt.Errorf("invalid rpc-max-request-size: %w", err)
 		}
@@ -111,19 +111,19 @@ func apply(cfg *Config, key, value string) error {
 		}
 		cfg.MaxConcurrentDownloads = v
 	case "max-download-limit":
-		v, err := strconv.ParseInt(value, 10, 64)
+		v, err := parseSpeedBytes(value)
 		if err != nil {
 			return fmt.Errorf("invalid max-download-limit: %w", err)
 		}
 		cfg.MaxDownloadLimit = v
 	case "max-overall-download-limit":
-		v, err := strconv.ParseInt(value, 10, 64)
+		v, err := parseSpeedBytes(value)
 		if err != nil {
 			return fmt.Errorf("invalid max-overall-download-limit: %w", err)
 		}
 		cfg.MaxOverallDownloadLimit = v
 	case "max-overall-upload-limit":
-		v, err := strconv.ParseInt(value, 10, 64)
+		v, err := parseSpeedBytes(value)
 		if err != nil {
 			return fmt.Errorf("invalid max-overall-upload-limit: %w", err)
 		}
@@ -163,7 +163,7 @@ func apply(cfg *Config, key, value string) error {
 	case "log-level":
 		cfg.LogLevel = strings.ToLower(value)
 	case "listen-port":
-		v, err := strconv.Atoi(value)
+		v, err := ParsePortSpec(value)
 		if err != nil {
 			return fmt.Errorf("invalid listen-port: %w", err)
 		}
@@ -185,7 +185,7 @@ func apply(cfg *Config, key, value string) error {
 	case "dht-file-path6":
 		cfg.DHTFilePath6 = value
 	case "dht-listen-port":
-		v, err := strconv.Atoi(value)
+		v, err := ParsePortSpec(value)
 		if err != nil {
 			return fmt.Errorf("invalid dht-listen-port: %w", err)
 		}
@@ -327,11 +327,57 @@ func apply(cfg *Config, key, value string) error {
 	case "file-allocation":
 		cfg.FileAllocation = value
 	case "max-upload-limit":
-		v, err := strconv.ParseInt(value, 10, 64)
+		v, err := parseSpeedBytes(value)
 		if err != nil {
 			return fmt.Errorf("invalid max-upload-limit: %w", err)
 		}
 		cfg.MaxUploadLimit = v
+	case "min-split-size":
+		v, err := parseSpeedBytes(value)
+		if err != nil {
+			return fmt.Errorf("invalid min-split-size: %w", err)
+		}
+		cfg.MinSplitSize = v
+	case "max-tries":
+		v, err := strconv.Atoi(value)
+		if err != nil || v < 0 {
+			return fmt.Errorf("invalid max-tries: %q", value)
+		}
+		cfg.MaxTries = v
+	case "lowest-speed-limit":
+		v, err := parseSpeedBytes(value)
+		if err != nil {
+			return fmt.Errorf("invalid lowest-speed-limit: %w", err)
+		}
+		cfg.LowestSpeedLimit = v
+	case "http-user":
+		cfg.HTTPUser = value
+	case "http-passwd":
+		cfg.HTTPPasswd = value
+	case "ftp-user":
+		cfg.FTPUser = value
+	case "ftp-passwd":
+		cfg.FTPPasswd = value
+	case "header":
+		if cfg.Header == "" {
+			cfg.Header = value
+		} else {
+			cfg.Header += "\n" + value
+		}
+	case "input-file":
+		cfg.InputFile = value
+	case "rpc-save-upload-metadata":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.RPCSaveUploadMetadata = v
+	case "quiet":
+		v, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.Quiet = v
 	case "connect-timeout":
 		v, err := strconv.Atoi(value)
 		if err != nil {
@@ -419,6 +465,9 @@ func apply(cfg *Config, key, value string) error {
 		}
 		cfg.ED2KUploadSlots = v
 	default:
+		if _, ignored := knownIgnoredOptions[key]; ignored {
+			return nil
+		}
 		cfg.Warnings = append(cfg.Warnings, fmt.Sprintf("unknown option ignored: %s=%s", key, value))
 	}
 	return nil

@@ -50,7 +50,7 @@ These points complement (not replace) aria2’s strengths; see [Known limitation
 
 ### 1. Run the daemon
 
-By default reads `aria2.conf` in the current directory:
+Looks for config in aria2 order: `./aria2.conf`, `$XDG_CONFIG_HOME/aria2/aria2.conf`, `$HOME/.aria2/aria2.conf`. Use `--conf-path` or `--no-conf`:
 
 ```bash
 go run ./cmd/go-aria2 daemon
@@ -250,11 +250,14 @@ ed2k-upload-slots=3
 - HTTP
   - `http-user-agent`
   - `http-referer`
+  - `http-user` / `http-passwd`
   - `http-proxy`
   - `https-proxy`
   - `all-proxy`
   - `max-connection-per-server`
-  - `split`
+  - `split` / `min-split-size`
+  - `max-tries` / `lowest-speed-limit`
+  - `header`
   - `check-certificate`
 - BT
   - `listen-port`
@@ -272,7 +275,9 @@ ed2k-upload-slots=3
   - `ed2k-source-exchange`
   - `ed2k-upload-slots`
 
-Unknown keys do not abort startup; they are logged as warnings.
+Unknown keys do not abort startup; they are logged as warnings. Common advanced aria2 options (e.g. `disk-cache`, `enable-peer-exchange`, `rpc-secure`) are accepted silently. Values support inline `#` comments, quotes, `K/M/G` units, and port ranges such as `listen-port=6881-6999` (first port is used). Unknown CLI flags and `--quiet` no longer prevent startup.
+
+If `save-session` points to a non-`.json` path (typical aria2 `aria2.session`), the file is written back in aria2 text format.
 
 ## JSON-RPC coverage
 
@@ -324,6 +329,8 @@ Conventions:
 - `addUri` accepts `http`/`https`/`ftp`/`sftp`/`ed2k`/`magnet`/`file`; other schemes return `Unsupported URI scheme`
 - `file-allocation` (`none`/`trunc`/`prealloc`/`falloc`) and `index-out` in HTTP/FTP/SFTP/BT drivers; `changeOption` with `index-out` updates output paths
 - `connect-timeout` and `timeout` in the HTTP driver; `connect-timeout` also used for FTP/SFTP connections
+- `http-user` / `http-passwd` and `ftp-user` / `ftp-passwd` for HTTP Basic and FTP login
+- `max-tries` retries failed HTTP downloads; `lowest-speed-limit` fails a transfer that stays too slow
 - `continue` and `allow-overwrite` in HTTP/FTP/SFTP drivers
 - `retry-wait` waits before HTTP/FTP/SFTP mirror failover
 - `checksum` validated on add/change; verified after HTTP download completes
@@ -416,8 +423,9 @@ Default session path comes from `save-session`; if unset, it falls under `data-d
 
 ## Known limitations
 
-- Not a full aria2 replacement; protocol and option semantics are still being aligned.
-- Some aria2 advanced options (e.g. HTTP pipelining, live piece verification) are not implemented yet.
+- Typical aria2.conf / `aria2c` command lines now start successfully; some advanced options are still accepted without full runtime semantics (HTTP pipelining, `rpc-secure` TLS, live piece verification).
+- `listen-port=6881-6999` uses the first port; it does not listen on the whole range.
+- `--daemon` is a config flag only and does not fork like aria2 (keep a foreground process under systemd/Docker).
 - Strict BT recovery needs torrent metadata to be available.
 - Full ED2K recovery is still being extended.
 

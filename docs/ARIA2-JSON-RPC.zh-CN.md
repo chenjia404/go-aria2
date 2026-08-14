@@ -89,6 +89,8 @@
 | `max-upload-limit` | **仅存储**：任务级上传限速尚未在驱动层生效 |
 | `file-allocation`、`index-out` | **已实现**：HTTP/FTP/SFTP/BT 驱动（`changeOption` 更新 `index-out` 时同步输出路径） |
 | `header`、`min-split-size`、`piece-length` | **已实现**：HTTP 驱动 |
+| `http-user` / `http-passwd`、`ftp-user` / `ftp-passwd` | **已实现**：HTTP Basic / FTP 登录 |
+| `max-tries`、`lowest-speed-limit` | **已实现**：HTTP 重试与最低速度阈值 |
 | `connect-timeout`、`timeout` | **已实现**：HTTP 驱动（`DialContext` / `Client.Timeout`）；`connect-timeout` 亦用于 FTP/SFTP 连接 |
 | `retry-wait` | **已实现**：HTTP/FTP/SFTP 镜像切换前等待 |
 | `continue`、`allow-overwrite` | **已实现**：HTTP/FTP/SFTP |

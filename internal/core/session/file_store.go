@@ -13,15 +13,34 @@ import (
 	"github.com/chenjia404/go-aria2/internal/migrate/aria2session/text"
 )
 
+// SessionFormat 表示 save-session 主文件格式。
+type SessionFormat int
+
+const (
+	// FormatJSON 写入 go-aria2 JSON session。
+	FormatJSON SessionFormat = iota
+	// FormatAria2Text 写入 aria2 文本 save-session，便于直接替换原生 aria2。
+	FormatAria2Text
+)
+
 // FileStore 将任务快照保存为本地 JSON 文件，可选同步导出 aria2 文本 save-session。
 type FileStore struct {
 	path            string
+	primaryFormat   SessionFormat
 	aria2ExportPath string
 }
 
 // NewFileStore 创建一个基于文件的 session store。
 func NewFileStore(path string) *FileStore {
 	return &FileStore{path: path}
+}
+
+// SetPrimaryFormat 设置主 session 文件格式。
+func (s *FileStore) SetPrimaryFormat(format SessionFormat) {
+	if s == nil {
+		return
+	}
+	s.primaryFormat = format
 }
 
 // SetAria2ExportPath 启用向 aria2 文本 save-session 路径的双写（空字符串关闭）。
@@ -109,10 +128,14 @@ func (s *FileStore) Save(ctx context.Context, tasks []*task.Task) error {
 		snapshot = append(snapshot, item.Clone())
 	}
 
-	if err := s.saveJSON(ctx, s.path, snapshot); err != nil {
+	if s.primaryFormat == FormatAria2Text {
+		if err := text.WriteFile(s.path, snapshot); err != nil {
+			return err
+		}
+	} else if err := s.saveJSON(ctx, s.path, snapshot); err != nil {
 		return err
 	}
-	if s.aria2ExportPath == "" {
+	if s.aria2ExportPath == "" || s.aria2ExportPath == s.path {
 		return nil
 	}
 	return text.WriteFile(s.aria2ExportPath, snapshot)

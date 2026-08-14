@@ -118,7 +118,8 @@ func isTaskOnlyOption(key string) bool {
 	switch key {
 	case "out", "pause", "gid", "index-out", "select-file", "split", "min-split-size",
 		"max-download-limit", "max-upload-limit", "header", "referer", "user-agent",
-		"http-user-agent", "http-referer", "piece-length", "follow-torrent":
+		"http-user-agent", "http-referer", "piece-length", "follow-torrent",
+		"http-user", "http-passwd", "ftp-user", "ftp-passwd":
 		return true
 	default:
 		return false
@@ -132,7 +133,7 @@ func validateKnownOption(key, value string) error {
 			return optionError(key, value)
 		}
 	case "max-download-limit", "max-upload-limit", "max-overall-download-limit", "max-overall-upload-limit",
-		"bt-request-peer-speed-limit":
+		"bt-request-peer-speed-limit", "lowest-speed-limit":
 		if _, err := parseSpeedLimit(value); err != nil {
 			return optionError(key, value)
 		}
@@ -144,7 +145,7 @@ func validateKnownOption(key, value string) error {
 			return optionError(key, value)
 		}
 	case "split", "max-connection-per-server", "max-concurrent-downloads",
-		"listen-port", "dht-listen-port", "bt-max-peers":
+		"listen-port", "dht-listen-port", "bt-max-peers", "max-tries":
 		if _, err := parsePositiveInt(value); err != nil {
 			return optionError(key, value)
 		}

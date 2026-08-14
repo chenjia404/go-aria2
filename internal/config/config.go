@@ -65,6 +65,17 @@ type Config struct {
 	Timeout                 int
 	RetryWait               int
 	ForceSave               bool
+	MinSplitSize            int64
+	MaxTries                int
+	LowestSpeedLimit        int64
+	HTTPUser                string
+	HTTPPasswd              string
+	FTPUser                 string
+	FTPPasswd               string
+	Header                  string
+	InputFile               string
+	RPCSaveUploadMetadata   bool
+	Quiet                   bool
 	SaveSession             string
 	SaveSessionInterval     time.Duration
 	ED2KEnable              bool
@@ -82,55 +93,56 @@ type Config struct {
 // Default 返回适合第一阶段骨架的默认配置�?
 func Default() *Config {
 	return &Config{
-		EnableRPC:              true,
-		RPCListenPort:          6800,
-		RPCListenAll:           false,
-		RPCAllowOriginAll:      false,
-		RPCMaxRequestSize:      10 << 20,
-		EnableWebSocket:        true,
-		Dir:                    ".",
-		DataDir:                "./data",
-		MaxConcurrentDownloads: 1,
-		MaxDownloadLimit:       0,
-		AllowOverwrite:         false,
-		AutoFileRenaming:       true,
-		Pause:                  false,
-		ContinueDownloads:      true,
-		Daemon:                 false,
-		LogLevel:               "info",
-		ListenPort:             6881,
-		EnableDHT:              true,
-		EnableDHT6:             true,
-		DHTFilePath:            "",
-		DHTFilePath6:           "",
-		DHTListenPort:          0,
-		BTMaxPeers:             50,
-		BTForceEncryption:      false,
-		BTRequireCrypto:        false,
-		BTMinCryptoLevel:       "plain",
+		EnableRPC:               true,
+		RPCListenPort:           6800,
+		RPCListenAll:            false,
+		RPCAllowOriginAll:       false,
+		RPCMaxRequestSize:       10 << 20,
+		EnableWebSocket:         true,
+		Dir:                     ".",
+		DataDir:                 "./data",
+		MaxConcurrentDownloads:  1,
+		MaxDownloadLimit:        0,
+		AllowOverwrite:          false,
+		AutoFileRenaming:        true,
+		Pause:                   false,
+		ContinueDownloads:       true,
+		Daemon:                  false,
+		LogLevel:                "info",
+		ListenPort:              6881,
+		EnableDHT:               true,
+		EnableDHT6:              true,
+		DHTFilePath:             "",
+		DHTFilePath6:            "",
+		DHTListenPort:           0,
+		BTMaxPeers:              50,
+		BTForceEncryption:       false,
+		BTRequireCrypto:         false,
+		BTMinCryptoLevel:        "plain",
 		BTRequestPeerSpeedLimit: 50 * 1024,
-		BTTracker:              "",
-		BTExcludeTracker:       "",
-		BTLoadSavedMetadata:    true,
-		BTSaveMetadata:         true,
-		FollowTorrent:          true,
-		FollowMetalink:         true,
-		PauseMetadata:          false,
-		SeedRatio:              1.0,
-		SeedTime:               0,
-		HTTPUserAgent:          "github.com/chenjia404/go-aria2/0.1",
-		CheckCertificate:       true,
-		NoProxy:                "",
-		SaveSession:            "./data/session.json",
-		SaveSessionInterval:    30 * time.Second,
-		ED2KEnable:             true,
-		ED2KListenPort:         4662,
-		ED2KServerPort:         4661,
-		ED2KMaxSources:         200,
-		ED2KKadEnable:          true,
-		ED2KServerEnable:       true,
-		ED2KAICHEnable:         true,
-		ED2KSourceExchange:     true,
-		ED2KUploadSlots:        3,
+		BTTracker:               "",
+		BTExcludeTracker:        "",
+		BTLoadSavedMetadata:     true,
+		BTSaveMetadata:          true,
+		FollowTorrent:           true,
+		FollowMetalink:          true,
+		PauseMetadata:           false,
+		SeedRatio:               1.0,
+		SeedTime:                0,
+		HTTPUserAgent:           "github.com/chenjia404/go-aria2/0.1",
+		CheckCertificate:        true,
+		NoProxy:                 "",
+		RPCSaveUploadMetadata:   true,
+		SaveSession:             "./data/session.json",
+		SaveSessionInterval:     30 * time.Second,
+		ED2KEnable:              true,
+		ED2KListenPort:          4662,
+		ED2KServerPort:          4661,
+		ED2KMaxSources:          200,
+		ED2KKadEnable:           true,
+		ED2KServerEnable:        true,
+		ED2KAICHEnable:          true,
+		ED2KSourceExchange:      true,
+		ED2KUploadSlots:         3,
 	}
 }

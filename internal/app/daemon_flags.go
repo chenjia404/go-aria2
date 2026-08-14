@@ -3,6 +3,7 @@ package app
 import (
 	"flag"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/chenjia404/go-aria2/internal/config"
@@ -10,11 +11,14 @@ import (
 
 // daemonCLIOptions 表示命令行上显式传入的 aria2 风格覆盖项。
 type daemonCLIOptions struct {
-	configPath string
-	values     map[string]any
-	inputFile  string
-	uris       []string
-	startup    map[string]string
+	configPath      string
+	confSeen        bool
+	noConf          bool
+	values          map[string]any
+	inputFile       string
+	uris            []string
+	startup         map[string]string
+	unknownWarnings []string
 }
 
 // parseDaemonArgs 解析 aria2 风格守护进程参数。
@@ -50,17 +54,25 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 		btExcludeTracker string
 		dhtFilePath      string
 		dhtFilePath6     string
+		listenPortStr    string
+		dhtListenPortStr string
+		maxDownloadStr   string
+		maxOverallDLStr  string
+		maxOverallULStr  string
+		minSplitSizeStr  string
+		lowestSpeedStr   string
+		httpUser         string
+		httpPasswd       string
+		ftpUser          string
+		ftpPasswd        string
+		fileAllocation   string
 	)
 	var (
 		rpcListenPort          int
-		rpcMaxRequestSize      int64
+		rpcMaxRequestSizeStr   string
 		maxConcurrentDownloads int
-		maxDownloadLimit       int64
-		maxOverallDL           int64
-		maxOverallUL           int64
-		listenPort             int
-		dhtListenPort          int
 		btMaxPeers             int
+		maxTries               int
 		maxConnPerServer       int
 		split                  int
 		saveSessInterval       int64
@@ -100,11 +112,16 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 		ed2kServerEnable   bool
 		ed2kAICHEnable     bool
 		ed2kSourceExchange bool
+		noConf             bool
+		quiet              bool
+		btEnableLPD        bool
 	)
-	var confSeen bool
 
 	fs.StringVar(&configPath, "conf", "aria2.conf", "path to aria2 style config file")
 	fs.StringVar(&configPath, "conf-path", "aria2.conf", "path to aria2 style config file")
+	fs.BoolVar(&noConf, "no-conf", false, "do not load aria2.conf")
+	fs.BoolVar(&quiet, "quiet", false, "suppress console log output")
+	fs.BoolVar(&quiet, "q", false, "suppress console log output")
 	fs.StringVar(&inputFile, "i", "", "input file")
 	fs.StringVar(&inputFile, "input-file", "", "input file")
 	fs.StringVar(&dir, "d", "", "download directory")
@@ -124,7 +141,7 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 	fs.BoolVar(&enableRPC, "enable-rpc", false, "enable rpc server")
 	fs.BoolVar(&rpcListenAll, "rpc-listen-all", false, "listen on all interfaces")
 	fs.BoolVar(&rpcAllowOriginAll, "rpc-allow-origin-all", false, "allow all origins")
-	fs.Int64Var(&rpcMaxRequestSize, "rpc-max-request-size", 0, "max rpc request size")
+	fs.StringVar(&rpcMaxRequestSizeStr, "rpc-max-request-size", "", "max rpc request size")
 	fs.IntVar(&rpcListenPort, "rpc-listen-port", 0, "rpc listen port")
 	fs.StringVar(&rpcSecret, "rpc-secret", "", "rpc secret")
 	fs.BoolVar(&rpcStrictAuth, "rpc-strict-auth", false, "require token for all RPC methods including system.*")
@@ -133,12 +150,13 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 	fs.BoolVar(&allowOverwrite, "allow-overwrite", false, "overwrite existing files")
 	fs.BoolVar(&autoFileRenaming, "auto-file-renaming", false, "auto rename when target exists")
 	fs.BoolVar(&pause, "pause", false, "start paused")
-	fs.IntVar(&listenPort, "listen-port", 0, "bt listen port")
+	fs.StringVar(&listenPortStr, "listen-port", "", "bt listen port or range")
 	fs.BoolVar(&enableDHT, "enable-dht", false, "enable dht")
 	fs.BoolVar(&enableDHT6, "enable-dht6", false, "enable ipv6 dht")
 	fs.StringVar(&dhtFilePath, "dht-file-path", "", "dht file path")
 	fs.StringVar(&dhtFilePath6, "dht-file-path6", "", "ipv6 dht file path")
-	fs.IntVar(&dhtListenPort, "dht-listen-port", 0, "dht listen port")
+	fs.StringVar(&dhtListenPortStr, "dht-listen-port", "", "dht listen port or range")
+	fs.BoolVar(&btEnableLPD, "bt-enable-lpd", false, "enable bt local peer discovery")
 	fs.IntVar(&btMaxPeers, "bt-max-peers", 0, "bt max peers")
 	fs.BoolVar(&btForceEncryption, "bt-force-encryption", false, "force bt encryption")
 	fs.BoolVar(&btRequireCrypto, "bt-require-crypto", false, "require bt crypto")
@@ -155,10 +173,18 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 	fs.Float64Var(&seedRatio, "seed-ratio", 0, "seed ratio")
 	fs.Int64Var(&seedTime, "seed-time", 0, "seed time in minutes")
 	fs.StringVar(&saveSess, "save-session", "", "save session path")
-	fs.Int64Var(&maxDownloadLimit, "max-download-limit", 0, "download limit")
+	fs.StringVar(&maxDownloadStr, "max-download-limit", "", "download limit")
 	fs.Int64Var(&saveSessInterval, "save-session-interval", 0, "save session interval seconds")
-	fs.Int64Var(&maxOverallDL, "max-overall-download-limit", 0, "overall download limit")
-	fs.Int64Var(&maxOverallUL, "max-overall-upload-limit", 0, "overall upload limit")
+	fs.StringVar(&maxOverallDLStr, "max-overall-download-limit", "", "overall download limit")
+	fs.StringVar(&maxOverallULStr, "max-overall-upload-limit", "", "overall upload limit")
+	fs.StringVar(&minSplitSizeStr, "min-split-size", "", "min split size")
+	fs.IntVar(&maxTries, "max-tries", 0, "max tries")
+	fs.StringVar(&lowestSpeedStr, "lowest-speed-limit", "", "lowest speed limit")
+	fs.StringVar(&fileAllocation, "file-allocation", "", "file allocation mode")
+	fs.StringVar(&httpUser, "http-user", "", "http username")
+	fs.StringVar(&httpPasswd, "http-passwd", "", "http password")
+	fs.StringVar(&ftpUser, "ftp-user", "", "ftp username")
+	fs.StringVar(&ftpPasswd, "ftp-passwd", "", "ftp password")
 	fs.StringVar(&httpUA, "http-user-agent", "", "http user agent")
 	fs.StringVar(&httpUA, "user-agent", "", "user agent")
 	fs.StringVar(&httpRef, "http-referer", "", "http referer")
@@ -184,15 +210,26 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 	fs.BoolVar(&ed2kSourceExchange, "ed2k-source-exchange", false, "enable ed2k source exchange")
 	fs.IntVar(&ed2kUploadSlots, "ed2k-upload-slots", 0, "ed2k upload slots")
 
-	if err := fs.Parse(args); err != nil {
+	knownFlags := map[string]bool{}
+	fs.VisitAll(func(f *flag.Flag) {
+		knownFlags[f.Name] = true
+	})
+	filteredArgs, unknown := filterUnknownDaemonArgs(args, knownFlags)
+	opts.unknownWarnings = unknown
+
+	if err := fs.Parse(filteredArgs); err != nil {
 		return opts, err
 	}
 
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "conf", "conf-path":
-			confSeen = true
+			opts.confSeen = true
 			opts.configPath = configPath
+		case "no-conf":
+			opts.noConf = noConf
+		case "quiet", "q":
+			opts.values["quiet"] = quiet
 		case "d", "dir":
 			opts.values["dir"] = dir
 		case "data-dir":
@@ -202,7 +239,9 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 		case "j", "max-concurrent-downloads":
 			opts.values["max-concurrent-downloads"] = maxConcurrentDownloads
 		case "max-download-limit":
-			opts.values["max-download-limit"] = maxDownloadLimit
+			if parsed, err := config.ParseSpeedBytes(maxDownloadStr); err == nil {
+				opts.values["max-download-limit"] = parsed
+			}
 		case "D", "daemon":
 			opts.values["daemon"] = daemon
 		case "c", "continue":
@@ -218,7 +257,9 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 		case "rpc-allow-origin-all":
 			opts.values["rpc-allow-origin-all"] = rpcAllowOriginAll
 		case "rpc-max-request-size":
-			opts.values["rpc-max-request-size"] = rpcMaxRequestSize
+			if parsed, err := config.ParseSpeedBytes(rpcMaxRequestSizeStr); err == nil {
+				opts.values["rpc-max-request-size"] = parsed
+			}
 		case "rpc-listen-port":
 			opts.values["rpc-listen-port"] = rpcListenPort
 		case "rpc-secret":
@@ -238,7 +279,9 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 		case "o", "out":
 			opts.startup["out"] = outName
 		case "listen-port":
-			opts.values["listen-port"] = listenPort
+			if parsed, err := config.ParsePortSpec(listenPortStr); err == nil {
+				opts.values["listen-port"] = parsed
+			}
 		case "enable-dht":
 			opts.values["enable-dht"] = enableDHT
 		case "enable-dht6":
@@ -248,7 +291,11 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 		case "dht-file-path6":
 			opts.values["dht-file-path6"] = dhtFilePath6
 		case "dht-listen-port":
-			opts.values["dht-listen-port"] = dhtListenPort
+			if parsed, err := config.ParsePortSpec(dhtListenPortStr); err == nil {
+				opts.values["dht-listen-port"] = parsed
+			}
+		case "bt-enable-lpd":
+			opts.values["bt-enable-lpd"] = btEnableLPD
 		case "bt-max-peers":
 			opts.values["bt-max-peers"] = btMaxPeers
 		case "bt-force-encryption":
@@ -282,9 +329,33 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 		case "save-session-interval":
 			opts.values["save-session-interval"] = saveSessInterval
 		case "max-overall-download-limit":
-			opts.values["max-overall-download-limit"] = maxOverallDL
+			if parsed, err := config.ParseSpeedBytes(maxOverallDLStr); err == nil {
+				opts.values["max-overall-download-limit"] = parsed
+			}
 		case "max-overall-upload-limit":
-			opts.values["max-overall-upload-limit"] = maxOverallUL
+			if parsed, err := config.ParseSpeedBytes(maxOverallULStr); err == nil {
+				opts.values["max-overall-upload-limit"] = parsed
+			}
+		case "min-split-size":
+			if parsed, err := config.ParseSpeedBytes(minSplitSizeStr); err == nil {
+				opts.values["min-split-size"] = parsed
+			}
+		case "max-tries":
+			opts.values["max-tries"] = maxTries
+		case "lowest-speed-limit":
+			if parsed, err := config.ParseSpeedBytes(lowestSpeedStr); err == nil {
+				opts.values["lowest-speed-limit"] = parsed
+			}
+		case "file-allocation":
+			opts.values["file-allocation"] = fileAllocation
+		case "http-user":
+			opts.values["http-user"] = httpUser
+		case "http-passwd":
+			opts.values["http-passwd"] = httpPasswd
+		case "ftp-user":
+			opts.values["ftp-user"] = ftpUser
+		case "ftp-passwd":
+			opts.values["ftp-passwd"] = ftpPasswd
 		case "http-user-agent", "user-agent":
 			opts.values["http-user-agent"] = httpUA
 			opts.values["user-agent"] = httpUA
@@ -362,10 +433,62 @@ func parseDaemonArgs(args []string) (daemonCLIOptions, error) {
 		opts.startup["force-save"] = "true"
 	}
 
-	if !confSeen {
+	if !opts.confSeen {
 		opts.configPath = configPath
 	}
 	return opts, nil
+}
+
+func filterUnknownDaemonArgs(args []string, known map[string]bool) (filtered []string, warnings []string) {
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if arg == "--" {
+			filtered = append(filtered, args[i:]...)
+			break
+		}
+		if !strings.HasPrefix(arg, "-") {
+			filtered = append(filtered, arg)
+			i++
+			continue
+		}
+		name, hasValue := splitDaemonFlag(arg)
+		if known[name] {
+			filtered = append(filtered, arg)
+			i++
+			continue
+		}
+		if !config.IsKnownIgnoredOption(name) {
+			warnings = append(warnings, fmt.Sprintf("unknown option ignored: %s", arg))
+		}
+		i++
+		if !hasValue && i < len(args) && looksLikeUnknownFlagValue(args[i]) {
+			i++
+		}
+	}
+	return filtered, warnings
+}
+
+func splitDaemonFlag(arg string) (name string, hasValue bool) {
+	trimmed := strings.TrimLeft(arg, "-")
+	if idx := strings.IndexByte(trimmed, '='); idx >= 0 {
+		return trimmed[:idx], true
+	}
+	return trimmed, false
+}
+
+func looksLikeUnknownFlagValue(value string) bool {
+	if value == "" || strings.HasPrefix(value, "-") {
+		return false
+	}
+	lower := strings.ToLower(value)
+	if strings.Contains(value, "://") || strings.HasPrefix(lower, "magnet:") {
+		return false
+	}
+	if strings.HasSuffix(lower, ".torrent") {
+		return false
+	}
+	return true
 }
 
 // applyDaemonCLIOptions 将命令行覆盖应用到配置对象。
@@ -499,6 +622,26 @@ func applyDaemonCLIOptions(cfg *config.Config, opts daemonCLIOptions) error {
 			cfg.ED2KSourceExchange = value.(bool)
 		case "ed2k-upload-slots":
 			cfg.ED2KUploadSlots = value.(int)
+		case "quiet":
+			cfg.Quiet = value.(bool)
+		case "bt-enable-lpd":
+			cfg.BTEnableLPD = value.(bool)
+		case "min-split-size":
+			cfg.MinSplitSize = value.(int64)
+		case "max-tries":
+			cfg.MaxTries = value.(int)
+		case "lowest-speed-limit":
+			cfg.LowestSpeedLimit = value.(int64)
+		case "file-allocation":
+			cfg.FileAllocation = value.(string)
+		case "http-user":
+			cfg.HTTPUser = value.(string)
+		case "http-passwd":
+			cfg.HTTPPasswd = value.(string)
+		case "ftp-user":
+			cfg.FTPUser = value.(string)
+		case "ftp-passwd":
+			cfg.FTPPasswd = value.(string)
 		}
 	}
 	return nil

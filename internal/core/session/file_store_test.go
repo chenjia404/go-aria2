@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/chenjia404/go-aria2/internal/core/task"
@@ -64,6 +65,43 @@ func TestFileStore_SaveDualWrite(t *testing.T) {
 	}
 	if _, err := os.Stat(exportPath); err != nil {
 		t.Fatalf("aria2 export missing: %v", err)
+	}
+}
+
+func TestFileStore_SaveAria2TextPrimary(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "aria2.session")
+	store := NewFileStore(path)
+	store.SetPrimaryFormat(FormatAria2Text)
+
+	item := &task.Task{
+		GID:      "0123456789abcdef",
+		Protocol: task.ProtocolHTTP,
+		Status:   task.StatusWaiting,
+		SaveDir:  "/tmp",
+		Name:     "sample.bin",
+		Meta: map[string]string{
+			"http.sourceURL": "https://example.com/sample.bin",
+		},
+		Options: map[string]string{"dir": "/tmp", "out": "sample.bin"},
+		Files: []task.File{{
+			URIs: []string{"https://example.com/sample.bin"},
+		}},
+	}
+	if err := store.Save(context.Background(), []*task.Task{item}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(data) == "" || data[0] == '[' {
+		t.Fatalf("expected aria2 text session, got %q", data)
+	}
+	if !strings.Contains(string(data), "https://example.com/sample.bin") {
+		t.Fatalf("missing uri: %s", data)
 	}
 }
 

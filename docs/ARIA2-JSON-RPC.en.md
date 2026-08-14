@@ -89,6 +89,8 @@ Common keys include: `dir`, `pause`, `max-concurrent-downloads`, `http-user-agen
 | `max-upload-limit` | **Store-only**; per-task upload limit not applied in drivers yet |
 | `file-allocation`, `index-out` | **Implemented** in HTTP/FTP/SFTP/BT (`changeOption` with `index-out` updates output paths) |
 | `header`, `min-split-size`, `piece-length` | **Implemented** in HTTP driver |
+| `http-user` / `http-passwd`, `ftp-user` / `ftp-passwd` | **Implemented**: HTTP Basic / FTP login |
+| `max-tries`, `lowest-speed-limit` | **Implemented**: HTTP retries and minimum speed |
 | `connect-timeout`, `timeout` | **Implemented** in HTTP (`DialContext` / `Client.Timeout`); `connect-timeout` also for FTP/SFTP |
 | `retry-wait` | **Implemented**: wait before HTTP/FTP/SFTP mirror failover |
 | `continue`, `allow-overwrite` | **Implemented** in HTTP/FTP/SFTP |

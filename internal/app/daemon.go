@@ -30,6 +30,12 @@ func runDaemon(args []string) error {
 		return err
 	}
 
+	if daemonOpts.noConf {
+		daemonOpts.configPath = ""
+	} else if !daemonOpts.confSeen {
+		daemonOpts.configPath = config.ResolveDefaultConfigPath()
+	}
+
 	cfg, err := loadConfig(daemonOpts.configPath)
 	if err != nil {
 		return err
@@ -38,6 +44,9 @@ func runDaemon(args []string) error {
 		return err
 	}
 	config.ApplyAria2CompatMode(cfg)
+	if strings.TrimSpace(daemonOpts.inputFile) == "" && strings.TrimSpace(cfg.InputFile) != "" {
+		daemonOpts.inputFile = cfg.InputFile
+	}
 	normalizeDaemonInputFile(cfg, &daemonOpts)
 	runtimePaths := resolveRuntimePaths(cfg)
 
@@ -48,7 +57,7 @@ func runDaemon(args []string) error {
 	if closer != nil {
 		defer closer.Close()
 	}
-	for _, warning := range cfg.Warnings {
+	for _, warning := range append(append([]string{}, daemonOpts.unknownWarnings...), cfg.Warnings...) {
 		logger.Printf("config warning: %s", warning)
 	}
 	if !cfg.FollowTorrent {
@@ -62,6 +71,9 @@ func runDaemon(args []string) error {
 	}
 
 	store := session.NewFileStore(runtimePaths.sessionPath)
+	if config.ShouldWriteAria2TextSession(runtimePaths.sessionPath) {
+		store.SetPrimaryFormat(session.FormatAria2Text)
+	}
 	if cfg.Aria2CompatMode {
 		store.SetAria2ExportPath(config.Aria2SessionExportPath(runtimePaths.sessionPath))
 	}
@@ -230,6 +242,9 @@ func normalizeDaemonInputFile(cfg *config.Config, opts *daemonCLIOptions) {
 }
 
 func loadConfig(path string) (*config.Config, error) {
+	if strings.TrimSpace(path) == "" {
+		return config.Default(), nil
+	}
 	_, err := os.Stat(path)
 	if err == nil {
 		return config.LoadFile(path)
@@ -269,58 +284,84 @@ func resolveRuntimePaths(cfg *config.Config) runtimePaths {
 }
 
 func buildGlobalOptions(cfg *config.Config) map[string]string {
-	return map[string]string{
-		"dir":                        cfg.Dir,
-		"allow-overwrite":            strconv.FormatBool(cfg.AllowOverwrite),
-		"auto-file-renaming":         strconv.FormatBool(cfg.AutoFileRenaming),
-		"pause":                      strconv.FormatBool(cfg.Pause),
-		"continue":                   strconv.FormatBool(cfg.ContinueDownloads),
-		"max-concurrent-downloads":   strconv.Itoa(cfg.MaxConcurrentDownloads),
-		"max-download-limit":         strconv.FormatInt(cfg.MaxDownloadLimit, 10),
-		"max-overall-download-limit": strconv.FormatInt(cfg.MaxOverallDownloadLimit, 10),
-		"max-overall-upload-limit":   strconv.FormatInt(cfg.MaxOverallUploadLimit, 10),
-		"seed-ratio":                 strconv.FormatFloat(cfg.SeedRatio, 'f', -1, 64),
-		"seed-time":                  strconv.FormatInt(int64(cfg.SeedTime/time.Minute), 10),
-		"dht-file-path":              cfg.DHTFilePath,
-		"dht-file-path6":             cfg.DHTFilePath6,
-		"dht-listen-port":            strconv.Itoa(cfg.DHTListenPort),
-		"enable-dht":                 strconv.FormatBool(cfg.EnableDHT),
-		"enable-dht6":                strconv.FormatBool(cfg.EnableDHT6),
-		"listen-port":                strconv.Itoa(cfg.ListenPort),
-		"bt-max-peers":               strconv.Itoa(cfg.BTMaxPeers),
+	opts := map[string]string{
+		"dir":                         cfg.Dir,
+		"allow-overwrite":             strconv.FormatBool(cfg.AllowOverwrite),
+		"auto-file-renaming":          strconv.FormatBool(cfg.AutoFileRenaming),
+		"pause":                       strconv.FormatBool(cfg.Pause),
+		"continue":                    strconv.FormatBool(cfg.ContinueDownloads),
+		"max-concurrent-downloads":    strconv.Itoa(cfg.MaxConcurrentDownloads),
+		"max-download-limit":          strconv.FormatInt(cfg.MaxDownloadLimit, 10),
+		"max-overall-download-limit":  strconv.FormatInt(cfg.MaxOverallDownloadLimit, 10),
+		"max-overall-upload-limit":    strconv.FormatInt(cfg.MaxOverallUploadLimit, 10),
+		"seed-ratio":                  strconv.FormatFloat(cfg.SeedRatio, 'f', -1, 64),
+		"seed-time":                   strconv.FormatInt(int64(cfg.SeedTime/time.Minute), 10),
+		"dht-file-path":               cfg.DHTFilePath,
+		"dht-file-path6":              cfg.DHTFilePath6,
+		"dht-listen-port":             strconv.Itoa(cfg.DHTListenPort),
+		"enable-dht":                  strconv.FormatBool(cfg.EnableDHT),
+		"enable-dht6":                 strconv.FormatBool(cfg.EnableDHT6),
+		"listen-port":                 strconv.Itoa(cfg.ListenPort),
+		"bt-max-peers":                strconv.Itoa(cfg.BTMaxPeers),
 		"bt-request-peer-speed-limit": strconv.FormatInt(cfg.BTRequestPeerSpeedLimit, 10),
-		"bt-force-encryption":        strconv.FormatBool(cfg.BTForceEncryption),
-		"bt-require-crypto":          strconv.FormatBool(cfg.BTRequireCrypto),
-		"bt-min-crypto-level":        cfg.BTMinCryptoLevel,
-		"bt-tracker":                 cfg.BTTracker,
-		"bt-exclude-tracker":         cfg.BTExcludeTracker,
-		"bt-load-saved-metadata":     strconv.FormatBool(cfg.BTLoadSavedMetadata),
-		"bt-save-metadata":           strconv.FormatBool(cfg.BTSaveMetadata),
-		"follow-torrent":             strconv.FormatBool(cfg.FollowTorrent),
-		"follow-metalink":            strconv.FormatBool(cfg.FollowMetalink),
-		"pause-metadata":             strconv.FormatBool(cfg.PauseMetadata),
-		"http-user-agent":            cfg.HTTPUserAgent,
-		"user-agent":                 cfg.HTTPUserAgent,
-		"http-referer":               cfg.HTTPReferer,
-		"http-proxy":                 cfg.HTTPProxy,
-		"https-proxy":                cfg.HTTPSProxy,
-		"all-proxy":                  cfg.AllProxy,
-		"no-proxy":                   cfg.NoProxy,
-		"max-connection-per-server":  strconv.Itoa(cfg.MaxConnectionPerServer),
-		"split":                      strconv.Itoa(cfg.Split),
-		"check-certificate":          strconv.FormatBool(cfg.CheckCertificate),
-		"check-integrity":            strconv.FormatBool(cfg.CheckIntegrity),
-		"bt-enable-lpd":              strconv.FormatBool(cfg.BTEnableLPD),
-		"bt-detach-seed-only":        strconv.FormatBool(cfg.BTDetachSeedOnly),
-		"bt-remove-unselected-file":  strconv.FormatBool(cfg.BTRemoveUnselectedFile),
-		"aria2-compat-mode":          strconv.FormatBool(cfg.Aria2CompatMode),
-		"file-allocation":            cfg.FileAllocation,
-		"max-upload-limit":           strconv.FormatInt(cfg.MaxUploadLimit, 10),
-		"connect-timeout":            strconv.Itoa(cfg.ConnectTimeout),
-		"timeout":                    strconv.Itoa(cfg.Timeout),
-		"retry-wait":                 strconv.Itoa(cfg.RetryWait),
-		"force-save":                 strconv.FormatBool(cfg.ForceSave),
+		"bt-force-encryption":         strconv.FormatBool(cfg.BTForceEncryption),
+		"bt-require-crypto":           strconv.FormatBool(cfg.BTRequireCrypto),
+		"bt-min-crypto-level":         cfg.BTMinCryptoLevel,
+		"bt-tracker":                  cfg.BTTracker,
+		"bt-exclude-tracker":          cfg.BTExcludeTracker,
+		"bt-load-saved-metadata":      strconv.FormatBool(cfg.BTLoadSavedMetadata),
+		"bt-save-metadata":            strconv.FormatBool(cfg.BTSaveMetadata),
+		"follow-torrent":              strconv.FormatBool(cfg.FollowTorrent),
+		"follow-metalink":             strconv.FormatBool(cfg.FollowMetalink),
+		"pause-metadata":              strconv.FormatBool(cfg.PauseMetadata),
+		"http-user-agent":             cfg.HTTPUserAgent,
+		"user-agent":                  cfg.HTTPUserAgent,
+		"http-referer":                cfg.HTTPReferer,
+		"http-proxy":                  cfg.HTTPProxy,
+		"https-proxy":                 cfg.HTTPSProxy,
+		"all-proxy":                   cfg.AllProxy,
+		"no-proxy":                    cfg.NoProxy,
+		"max-connection-per-server":   strconv.Itoa(cfg.MaxConnectionPerServer),
+		"split":                       strconv.Itoa(cfg.Split),
+		"check-certificate":           strconv.FormatBool(cfg.CheckCertificate),
+		"check-integrity":             strconv.FormatBool(cfg.CheckIntegrity),
+		"bt-enable-lpd":               strconv.FormatBool(cfg.BTEnableLPD),
+		"bt-detach-seed-only":         strconv.FormatBool(cfg.BTDetachSeedOnly),
+		"bt-remove-unselected-file":   strconv.FormatBool(cfg.BTRemoveUnselectedFile),
+		"aria2-compat-mode":           strconv.FormatBool(cfg.Aria2CompatMode),
+		"file-allocation":             cfg.FileAllocation,
+		"max-upload-limit":            strconv.FormatInt(cfg.MaxUploadLimit, 10),
+		"connect-timeout":             strconv.Itoa(cfg.ConnectTimeout),
+		"timeout":                     strconv.Itoa(cfg.Timeout),
+		"retry-wait":                  strconv.Itoa(cfg.RetryWait),
+		"force-save":                  strconv.FormatBool(cfg.ForceSave),
+		"rpc-save-upload-metadata":    strconv.FormatBool(cfg.RPCSaveUploadMetadata),
 	}
+	if cfg.MinSplitSize > 0 {
+		opts["min-split-size"] = strconv.FormatInt(cfg.MinSplitSize, 10)
+	}
+	if cfg.MaxTries > 0 {
+		opts["max-tries"] = strconv.Itoa(cfg.MaxTries)
+	}
+	if cfg.LowestSpeedLimit > 0 {
+		opts["lowest-speed-limit"] = strconv.FormatInt(cfg.LowestSpeedLimit, 10)
+	}
+	if cfg.HTTPUser != "" {
+		opts["http-user"] = cfg.HTTPUser
+	}
+	if cfg.HTTPPasswd != "" {
+		opts["http-passwd"] = cfg.HTTPPasswd
+	}
+	if cfg.FTPUser != "" {
+		opts["ftp-user"] = cfg.FTPUser
+	}
+	if cfg.FTPPasswd != "" {
+		opts["ftp-passwd"] = cfg.FTPPasswd
+	}
+	if cfg.Header != "" {
+		opts["header"] = cfg.Header
+	}
+	return opts
 }
 
 func persistLoop(logger *log.Logger, mgr *manager.Manager, interval time.Duration) {
@@ -383,13 +424,20 @@ func rpcWebSocketExampleURL(port int, listenAll bool) string {
 
 func newLogger(cfg *config.Config) (*log.Logger, io.Closer, error) {
 	if cfg.LogPath == "" {
-		return log.New(os.Stdout, "[go-aria2] ", log.LstdFlags|log.Lmicroseconds), nil, nil
+		out := io.Writer(os.Stdout)
+		if cfg.Quiet {
+			out = io.Discard
+		}
+		return log.New(out, "[go-aria2] ", log.LstdFlags|log.Lmicroseconds), nil, nil
 	}
 
 	file, err := os.OpenFile(cfg.LogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return nil, nil, err
 	}
-	writer := io.MultiWriter(os.Stdout, file)
+	writer := io.Writer(file)
+	if !cfg.Quiet {
+		writer = io.MultiWriter(os.Stdout, file)
+	}
 	return log.New(writer, "[go-aria2] ", log.LstdFlags|log.Lmicroseconds), file, nil
 }
