@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -48,14 +49,15 @@ type state struct {
 	customHeaders map[string]string
 	fileAlloc     common.FileAllocationMode
 	limiter       *common.ByteLimiter
-	progressBase int64
-	progressDone int64
-	cancel       context.CancelFunc
-	running      bool
-	paused       bool
-	removed      bool
-	lastTick     time.Time
-	lastBytes    int64
+	progressBase  int64
+	progressDone  int64
+	cancel        context.CancelFunc
+	running       bool
+	paused        bool
+	removed       bool
+	lastTick      time.Time
+	lastBytes     int64
+	lowSpeed      bool
 }
 
 // Driver 使用标准库完�?HTTP/HTTPS 下载�?
@@ -423,10 +425,10 @@ func (d *Driver) LoadSessionTasks(ctx context.Context, tasks []*task.Task, globa
 			customHeaders: resolveCustomHeaders(saved.Options),
 			fileAlloc:     common.ParseFileAllocation(saved.Options),
 			limiter:       common.NewTaskDownloadLimiter(saved.Options, d.limiter),
-			paused:     saved.Status == task.StatusPaused,
-			running:    saved.Status == task.StatusActive,
-			lastTick:   time.Now(),
-			lastBytes:  saved.CompletedLength,
+			paused:        saved.Status == task.StatusPaused,
+			running:       saved.Status == task.StatusActive,
+			lastTick:      time.Now(),
+			lastBytes:     saved.CompletedLength,
 		}
 
 		d.mu.Lock()
@@ -486,31 +488,50 @@ func (d *Driver) download(ctx context.Context, taskID string) {
 		return
 	}
 
-	segmentCount := d.segmentCount(st, total, existingSize)
-	if total > 0 && acceptRanges && segmentCount > 1 {
-		if err := d.downloadChunked(ctx, taskID, st, existingSize, total, segmentCount); err != nil {
-			if ctx.Err() != nil {
+	tries := resolveMaxTries(st.task.Options)
+	var lastErr error
+	for attempt := 0; attempt < tries; attempt++ {
+		if attempt > 0 {
+			existingSize, _ = fileSize(st.outputPath)
+			if common.ShouldResetExistingFile(st.task.Options, existingSize) {
+				existingSize = 0
+			}
+			total, acceptRanges, err = d.probeResource(ctx, st)
+			if err != nil && total <= 0 {
+				total = 0
+				acceptRanges = false
+			}
+			if waitErr := common.SleepBetweenMirrors(ctx, st.task.Options); waitErr != nil {
 				d.pauseAfterCancel(taskID)
 				return
 			}
-			d.fail(taskID, err)
+		}
+
+		segmentCount := d.segmentCount(st, total, existingSize)
+		if total > 0 && acceptRanges && segmentCount > 1 {
+			lastErr = d.downloadChunked(ctx, taskID, st, existingSize, total, segmentCount)
+		} else {
+			lastErr = d.downloadSingle(ctx, taskID, st, existingSize, total)
+		}
+		if lastErr == nil {
+			if total > 0 {
+				d.complete(taskID, total)
+			}
 			return
 		}
-		d.complete(taskID, total)
-		return
-	}
-
-	if err := d.downloadSingle(ctx, taskID, st, existingSize, total); err != nil {
+		d.mu.RLock()
+		lowSpeed := st.lowSpeed
+		d.mu.RUnlock()
+		if lowSpeed {
+			d.fail(taskID, errLowestSpeed)
+			return
+		}
 		if ctx.Err() != nil {
 			d.pauseAfterCancel(taskID)
 			return
 		}
-		d.fail(taskID, err)
-		return
 	}
-	if total > 0 {
-		d.complete(taskID, total)
-	}
+	d.fail(taskID, lastErr)
 }
 
 func (d *Driver) downloadSingle(ctx context.Context, taskID string, st *state, existingSize, total int64) error {
@@ -884,6 +905,12 @@ func (d *Driver) advanceProgress(taskID string, delta int64) {
 	st.task.UpdatedAt = now
 	st.lastTick = now
 	st.lastBytes = completed
+	if limit := lowestSpeedLimit(st.task.Options); limit > 0 && st.task.DownloadSpeed > 0 && st.task.DownloadSpeed <= limit && completed > 64*1024 {
+		st.lowSpeed = true
+		if st.cancel != nil {
+			st.cancel()
+		}
+	}
 }
 
 func (d *Driver) prepareProgress(taskID string, base int64) {
@@ -1151,6 +1178,8 @@ func defaultUserAgent(opts Options) string {
 	return "github.com/chenjia404/go-aria2/0.1"
 }
 
+var errLowestSpeed = errors.New("download speed lower than lowest-speed-limit")
+
 func (st *state) setRequestHeaders(req *http.Request) {
 	if st == nil || req == nil {
 		return
@@ -1162,6 +1191,44 @@ func (st *state) setRequestHeaders(req *http.Request) {
 		req.Header.Set("Referer", st.referer)
 	}
 	common.ApplyCustomHeaders(req, st.customHeaders)
+	if st.task != nil {
+		if user := resolveStringOption(st.task.Options, "http-user", ""); user != "" {
+			req.SetBasicAuth(user, resolveStringOption(st.task.Options, "http-passwd", ""))
+		}
+	}
+}
+
+func resolveMaxTries(opts map[string]string) int {
+	if opts == nil {
+		return 1
+	}
+	raw, ok := opts["max-tries"]
+	if !ok || strings.TrimSpace(raw) == "" {
+		return 1
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || n < 0 {
+		return 1
+	}
+	if n == 0 {
+		return 1 << 20
+	}
+	return n
+}
+
+func lowestSpeedLimit(opts map[string]string) int64 {
+	if opts == nil {
+		return 0
+	}
+	raw, ok := opts["lowest-speed-limit"]
+	if !ok {
+		return 0
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
 }
 
 func resolveCustomHeaders(opts map[string]string) map[string]string {

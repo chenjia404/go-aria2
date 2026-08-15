@@ -472,3 +472,68 @@ func TestBuildClientAppliesTimeouts(t *testing.T) {
 		t.Fatal("expected transport with DialContext")
 	}
 }
+
+func TestHTTPBasicAuthFromOptions(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != "alice" || pass != "secret" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte("ok-auth"))
+	}))
+	defer server.Close()
+
+	saveDir := t.TempDir()
+	driver := New(Options{})
+	created, err := driver.Add(context.Background(), task.AddTaskInput{
+		URIs:    []string{server.URL + "/private.bin"},
+		SaveDir: saveDir,
+		Name:    "private.bin",
+		Options: map[string]string{"http-user": "alice", "http-passwd": "secret"},
+	})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if err := driver.Start(context.Background(), created.ID); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := driver.TellStatus(context.Background(), created.ID)
+		if err != nil {
+			t.Fatalf("TellStatus: %v", err)
+		}
+		if status.Status == task.StatusComplete {
+			break
+		}
+		if status.Status == task.StatusError {
+			t.Fatalf("auth download failed: %+v", status)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	data, err := os.ReadFile(filepath.Join(saveDir, "private.bin"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(data) != "ok-auth" {
+		t.Fatalf("payload: %q", data)
+	}
+}
+
+func TestResolveMaxTries(t *testing.T) {
+	t.Parallel()
+
+	if got := resolveMaxTries(nil); got != 1 {
+		t.Fatalf("nil: %d", got)
+	}
+	if got := resolveMaxTries(map[string]string{"max-tries": "8"}); got != 8 {
+		t.Fatalf("8: %d", got)
+	}
+	if got := resolveMaxTries(map[string]string{"max-tries": "0"}); got != 1<<20 {
+		t.Fatalf("unlimited: %d", got)
+	}
+}

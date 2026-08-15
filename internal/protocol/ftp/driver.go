@@ -82,6 +82,7 @@ func (d *Driver) Add(ctx context.Context, input task.AddTaskInput) (*task.Task, 
 	if err != nil {
 		return nil, err
 	}
+	applyFTPAuth(eps, input.Options)
 	name := deriveName(eps[0], input.Name)
 	name = common.ResolveIndexOutName(input.Options, 1, name)
 	outputPath := filepath.Join(input.SaveDir, name)
@@ -480,6 +481,23 @@ func (d *Driver) pauseAfterCancel(taskID string) {
 	st.task.DownloadSpeed = 0
 	st.task.Connections = 0
 	st.task.UpdatedAt = time.Now()
+}
+
+func applyFTPAuth(eps []endpoint, opts map[string]string) {
+	if len(eps) == 0 || opts == nil {
+		return
+	}
+	user := strings.TrimSpace(opts["ftp-user"])
+	if user == "" {
+		return
+	}
+	pass := opts["ftp-passwd"]
+	for i := range eps {
+		if eps[i].user == "" {
+			eps[i].user = user
+			eps[i].password = pass
+		}
+	}
 }
 
 func collectEndpoints(input task.AddTaskInput) ([]endpoint, error) {

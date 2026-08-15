@@ -42,7 +42,7 @@
 aria2 save-session -> 导入 -> go-aria2 data/session.json
 ```
 
-迁移完成后，后续运行 `go-aria2` 时使用的是它自己的 `session.json`，不再继续写回 aria2 的 `save-session` 文本格式。
+迁移完成后，如果 `save-session` 指向 `.json` 文件，后续运行会写 go-aria2 的 JSON session。如果 `save-session` 指向 aria2 常用的无 `.json` 后缀文件（例如 `aria2.session`），则会按 aria2 文本格式回写，便于和原守护进程互换。开启 `aria2-compat-mode` 时，JSON session 旁还会双写一份文本伴生文件。
 
 这里不要混用：
 

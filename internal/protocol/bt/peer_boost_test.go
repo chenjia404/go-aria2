@@ -13,7 +13,7 @@ func TestEffectiveRequestPeerThreshold(t *testing.T) {
 	}
 	if got := effectiveRequestPeerThreshold(map[string]string{
 		"bt-request-peer-speed-limit": "204800",
-		"max-download-limit":            "102400",
+		"max-download-limit":          "102400",
 	}, 0); got != 102400 {
 		t.Fatalf("expected capped by max-download-limit, got %d", got)
 	}
@@ -30,5 +30,8 @@ func TestResolveBTMaxPeers(t *testing.T) {
 	}
 	if got := resolveBTMaxPeers(nil, 55); got != 55 {
 		t.Fatalf("expected driver default 55, got %d", got)
+	}
+	if got := resolveBTMaxPeers(map[string]string{"bt-max-peers": "0"}, 55); got != 0 {
+		t.Fatalf("bt-max-peers=0 should mean unlimited, got %d", got)
 	}
 }

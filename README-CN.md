@@ -50,7 +50,7 @@ Go 模块路径：`github.com/chenjia404/go-aria2`（克隆地址：<https://git
 
 ### 1. 启动守护进程
 
-默认读取当前目录下的 `aria2.conf`：
+默认按 aria2 顺序查找配置：当前目录 `aria2.conf`、`$XDG_CONFIG_HOME/aria2/aria2.conf`、`$HOME/.aria2/aria2.conf`。也可用 `--conf-path` / `--no-conf`：
 
 ```bash
 go run ./cmd/go-aria2 daemon
@@ -250,11 +250,14 @@ ed2k-upload-slots=3
 - HTTP
   - `http-user-agent`
   - `http-referer`
+  - `http-user` / `http-passwd`
   - `http-proxy`
   - `https-proxy`
   - `all-proxy`
   - `max-connection-per-server`
-  - `split`
+  - `split` / `min-split-size`
+  - `max-tries` / `lowest-speed-limit`
+  - `header`
   - `check-certificate`
 - BT
   - `listen-port`
@@ -272,7 +275,9 @@ ed2k-upload-slots=3
   - `ed2k-source-exchange`
   - `ed2k-upload-slots`
 
-未识别配置项不会直接退出，会记录 warning。
+未识别配置项不会直接退出，会记录 warning。常见 aria2 高级选项（如 `disk-cache`、`enable-peer-exchange`、`rpc-secure`）会被静默接受，避免直接替换时刷屏。配置值支持行内 `#` 注释、引号、`K/M/G` 单位，以及 `listen-port=6881-6999` 这类端口区间（取起始端口）。`--quiet` / 未知命令行参数也不会导致启动失败。
+
+`save-session` 若指向非 `.json` 路径（例如 aria2 常用的 `aria2.session`），会按 aria2 文本格式回写，便于和原 session 互换。
 
 ## JSON-RPC 兼容范围
 
@@ -324,6 +329,8 @@ ed2k-upload-slots=3
 - `addUri` 支持 `http`/`https`/`ftp`/`sftp`/`ed2k`/`magnet`/`file`；其他 scheme 返回 `Unsupported URI scheme`
 - `file-allocation`（`none`/`trunc`/`prealloc`/`falloc`）、`index-out` 已在 HTTP/FTP/SFTP/BT 驱动落地；`changeOption` 更新 `index-out` 时同步输出路径
 - `connect-timeout`、`timeout` 在 HTTP 驱动生效；`connect-timeout` 亦用于 FTP/SFTP 连接
+- `http-user` / `http-passwd`、`ftp-user` / `ftp-passwd` 用于 HTTP Basic 与 FTP 登录
+- `max-tries` 在 HTTP 下载失败后重试；`lowest-speed-limit` 在速度持续过低时失败
 - `continue`、`allow-overwrite` 在 HTTP/FTP/SFTP 驱动生效
 - `retry-wait` 在 HTTP/FTP/SFTP 镜像切换前等待
 - `checksum` 在 `addUri`/`changeOption` 时校验格式；HTTP 下载完成后校验
@@ -418,8 +425,9 @@ go test ./internal/compat/aria2/...
 
 ## 已知限制
 
-- 不是 aria2 的完整替代品，协议与选项语义仍在逐步对齐。
-- 部分 aria2 高级选项（如 HTTP pipelining、实时分块校验）尚未实现。
+- 常见 aria2.conf / `aria2c` 命令行现在可以直接启动；部分高级选项仍只是接受而不改变底层语义（HTTP pipelining、`rpc-secure` TLS、实时分块校验等）。
+- `listen-port=6881-6999` 会使用起始端口，不会在整个区间上同时监听。
+- `--daemon` 只标记配置，不会像 aria2 那样 fork 到后台（systemd / Docker 请继续用前台进程）。
 - BT 严格恢复依赖 torrent 元数据可用。
 - ED2K 的完整恢复能力仍在扩展中。
 

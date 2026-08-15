@@ -23,3 +23,17 @@ func TestAria2SessionExportPath(t *testing.T) {
 		t.Fatalf("unexpected export path: %q", got)
 	}
 }
+
+func TestShouldWriteAria2TextSession(t *testing.T) {
+	t.Parallel()
+
+	if ShouldWriteAria2TextSession("./data/session.json") {
+		t.Fatal("json session should stay JSON")
+	}
+	if !ShouldWriteAria2TextSession("/config/aria2.session") {
+		t.Fatal("aria2 text session path should write text")
+	}
+	if !ShouldWriteAria2TextSession("./data/session") {
+		t.Fatal("extensionless session should write text")
+	}
+}

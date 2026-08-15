@@ -114,6 +114,125 @@ unknown-key=value
 		t.Fatalf("unexpected log settings: %+v", cfg)
 	}
 	if len(cfg.Warnings) != 1 {
-		t.Fatalf("expected one warning, got %d", len(cfg.Warnings))
+		t.Fatalf("expected one warning, got %d: %#v", len(cfg.Warnings), cfg.Warnings)
+	}
+}
+
+func TestParseTypicalAria2Conf(t *testing.T) {
+	t.Parallel()
+
+	configText := `
+dir="/downloads" # 下载目录
+disk-cache=64M
+file-allocation=none
+continue=true
+max-concurrent-downloads=10
+max-connection-per-server=16
+min-split-size=8M
+split=16
+disable-ipv6=false
+input-file=/config/aria2.session
+save-session=/config/aria2.session
+save-session-interval=60
+enable-rpc=true
+rpc-allow-origin-all=true
+rpc-listen-all=true
+rpc-listen-port=6800
+rpc-max-request-size=2M
+follow-torrent=true
+bt-max-peers=0
+enable-dht=true
+enable-dht6=true
+dht-listen-port=6881-6999
+listen-port=6881-6999
+enable-peer-exchange=true
+bt-enable-lpd=true
+bt-request-peer-speed-limit=1M
+max-overall-download-limit=2M
+max-overall-upload-limit=200K
+max-download-limit=1M
+seed-ratio=1.0
+force-save=true
+bt-hash-check-seed=true
+bt-seed-unverified=true
+bt-save-metadata=true
+http-user=alice
+http-passwd=secret
+ftp-user=bob
+ftp-passwd=ftp-secret
+header=Cookie: a=1
+header=Accept: */*
+max-tries=8
+lowest-speed-limit=10K
+rpc-save-upload-metadata=true
+quiet=false
+`
+
+	cfg, err := Parse(strings.NewReader(configText))
+	if err != nil {
+		t.Fatalf("typical aria2.conf should parse: %v", err)
+	}
+	if cfg.Dir != "/downloads" {
+		t.Fatalf("dir: %q", cfg.Dir)
+	}
+	if cfg.ListenPort != 6881 || cfg.DHTListenPort != 6881 {
+		t.Fatalf("port range: listen=%d dht=%d", cfg.ListenPort, cfg.DHTListenPort)
+	}
+	if cfg.MinSplitSize != 8*1024*1024 {
+		t.Fatalf("min-split-size: %d", cfg.MinSplitSize)
+	}
+	if cfg.MaxOverallDownloadLimit != 2*1024*1024 || cfg.MaxOverallUploadLimit != 200*1024 || cfg.MaxDownloadLimit != 1024*1024 {
+		t.Fatalf("speed limits: %+v", cfg)
+	}
+	if cfg.RPCMaxRequestSize != 2*1024*1024 {
+		t.Fatalf("rpc-max-request-size: %d", cfg.RPCMaxRequestSize)
+	}
+	if cfg.BTMaxPeers != 0 {
+		t.Fatalf("bt-max-peers=0 should be kept, got %d", cfg.BTMaxPeers)
+	}
+	if cfg.HTTPUser != "alice" || cfg.HTTPPasswd != "secret" || cfg.FTPUser != "bob" {
+		t.Fatalf("auth: %+v", cfg)
+	}
+	if !strings.Contains(cfg.Header, "Cookie: a=1") || !strings.Contains(cfg.Header, "Accept: */*") {
+		t.Fatalf("header: %q", cfg.Header)
+	}
+	if cfg.MaxTries != 8 || cfg.LowestSpeedLimit != 10*1024 {
+		t.Fatalf("retry/speed: tries=%d lowest=%d", cfg.MaxTries, cfg.LowestSpeedLimit)
+	}
+	if cfg.InputFile != "/config/aria2.session" || !cfg.RPCSaveUploadMetadata {
+		t.Fatalf("input/rpc-save: %+v", cfg)
+	}
+	if len(cfg.Warnings) != 0 {
+		t.Fatalf("typical aria2 options should not warn: %#v", cfg.Warnings)
+	}
+}
+
+func TestSanitizeConfigValue(t *testing.T) {
+	t.Parallel()
+
+	if got := SanitizeConfigValue(`true # rpc`); got != "true" {
+		t.Fatalf("comment: %q", got)
+	}
+	if got := SanitizeConfigValue(`"/downloads"`); got != "/downloads" {
+		t.Fatalf("quotes: %q", got)
+	}
+	if got := SanitizeConfigValue(`'true'`); got != "true" {
+		t.Fatalf("single quotes: %q", got)
+	}
+}
+
+func TestParsePortSpec(t *testing.T) {
+	t.Parallel()
+
+	got, err := ParsePortSpec("6881-6999")
+	if err != nil || got != 6881 {
+		t.Fatalf("range: %d %v", got, err)
+	}
+	got, err = ParsePortSpec("16881")
+	if err != nil || got != 16881 {
+		t.Fatalf("single: %d %v", got, err)
+	}
+	if _, err := ParsePortSpec("bad"); err == nil {
+		t.Fatal("expected error")
 	}
 }

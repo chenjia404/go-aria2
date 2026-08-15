@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -115,5 +116,62 @@ func TestParseDaemonArgsAria2Aliases(t *testing.T) {
 	}
 	if cfg.HTTPUserAgent != "ua-test" {
 		t.Fatalf("expected user-agent alias override, got %q", cfg.HTTPUserAgent)
+	}
+}
+
+func TestParseDaemonArgsDropInAria2Flags(t *testing.T) {
+	t.Parallel()
+
+	opts, err := parseDaemonArgs([]string{
+		"--conf-path", "aria2.conf",
+		"--listen-port", "6881-6999",
+		"--dht-listen-port=6881-6999",
+		"--max-overall-download-limit=2M",
+		"--max-download-limit", "1M",
+		"--min-split-size=8M",
+		"--max-tries", "8",
+		"--lowest-speed-limit=10K",
+		"--http-user", "alice",
+		"--http-passwd", "secret",
+		"--disk-cache", "64M",
+		"--enable-peer-exchange=true",
+		"--not-a-real-aria2-option=1",
+		"--quiet",
+		"--no-conf",
+	})
+	if err != nil {
+		t.Fatalf("parseDaemonArgs: %v", err)
+	}
+	if !opts.noConf {
+		t.Fatal("expected --no-conf")
+	}
+	if !opts.confSeen {
+		t.Fatal("expected --conf-path seen")
+	}
+	if opts.values["listen-port"] != 6881 {
+		t.Fatalf("listen-port: %#v", opts.values["listen-port"])
+	}
+	if opts.values["max-overall-download-limit"] != int64(2*1024*1024) {
+		t.Fatalf("overall dl: %#v", opts.values["max-overall-download-limit"])
+	}
+	if opts.values["max-download-limit"] != int64(1024*1024) {
+		t.Fatalf("dl: %#v", opts.values["max-download-limit"])
+	}
+	if opts.values["http-user"] != "alice" {
+		t.Fatalf("http-user: %#v", opts.values["http-user"])
+	}
+	if len(opts.unknownWarnings) != 1 || !strings.Contains(opts.unknownWarnings[0], "not-a-real-aria2-option") {
+		t.Fatalf("expected only truly unknown option warned, got %#v", opts.unknownWarnings)
+	}
+
+	cfg := config.Default()
+	if err := applyDaemonCLIOptions(cfg, opts); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if cfg.ListenPort != 6881 || cfg.MaxTries != 8 || cfg.HTTPUser != "alice" || !cfg.Quiet {
+		t.Fatalf("applied: %+v", cfg)
+	}
+	if cfg.MinSplitSize != 8*1024*1024 || cfg.LowestSpeedLimit != 10*1024 {
+		t.Fatalf("sizes: min=%d lowest=%d", cfg.MinSplitSize, cfg.LowestSpeedLimit)
 	}
 }
