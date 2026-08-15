@@ -1175,7 +1175,7 @@ func defaultUserAgent(opts Options) string {
 	if opts.UserAgent != "" {
 		return opts.UserAgent
 	}
-	return "github.com/chenjia404/go-aria2/0.1"
+	return "github.com/chenjia404/go-aria2/0.4.0"
 }
 
 var errLowestSpeed = errors.New("download speed lower than lowest-speed-limit")
