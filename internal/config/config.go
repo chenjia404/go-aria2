@@ -129,7 +129,7 @@ func Default() *Config {
 		PauseMetadata:           false,
 		SeedRatio:               1.0,
 		SeedTime:                0,
-		HTTPUserAgent:           "github.com/chenjia404/go-aria2/0.1",
+		HTTPUserAgent:           "github.com/chenjia404/go-aria2/0.4.0",
 		CheckCertificate:        true,
 		NoProxy:                 "",
 		RPCSaveUploadMetadata:   true,
